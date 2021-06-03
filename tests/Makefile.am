@@ -418,17 +418,8 @@ DECODER_TESTS = \
 	pipe.test \
 	poll-P.test \
 	poll.test \
-	prctl-arg2-intptr.test \
-	prctl-dumpable.test \
-	prctl-name.test \
-	prctl-no-args.test \
-	prctl-pdeathsig.test \
-	prctl-seccomp-filter-v.test \
 	prctl-seccomp-strict.test \
-	prctl-securebits.test \
 	prctl-spec-inject.test \
-	prctl-tid_address.test \
-	prctl-tsc.test \
 	qual_fault-exit_group.test \
 	quotactl-success-v.test \
 	quotactl-success.test \
@@ -589,6 +580,7 @@ EXTRA_DIST = \
 	pipe.expected \
 	poke-range.expected \
 	poke-unaligned.expected \
+	prctl.sh \
 	print_user_desc.c \
 	printsignal.c \
 	printxval.c \
