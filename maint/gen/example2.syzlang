@@ -1,0 +1,11 @@
+include <uapi/linux/btrfs.h>
+
+// define ioctl variants for each cmd
+ioctl$BTRFS_IOC_SNAP_CREATE(fd fd, cmd const[BTRFS_IOC_SNAP_CREATE], arg ptr[in, btrfs_ioctl_vol_args])
+
+ioctl$BTRFS_IOC_SUBVOL_CREATE(fd fd, cmd const[BTRFS_IOC_SUBVOL_CREATE], arg ptr[in, btrfs_ioctl_vol_args])
+
+btrfs_ioctl_vol_args {
+	fd      fd
+	name    string[BTRFS_PATH_MAX]
+}

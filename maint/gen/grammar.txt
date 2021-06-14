@@ -1,0 +1,41 @@
+syscall 			::= <identifier>(<arglist>) <type> (type)
+arglist 			::= <arg> | <arg>, <arglist>
+arg 				::= <identifier> <type>
+type	 			::= <identifier> | <identifier>[<type_options>]
+type_options	 	::= <type_option> | <type_option>, <type_options>
+type_option			::= <type> | <number>
+identifier			::= /[A-Za-z_][A-Za-z0-9_\$]*/
+number				::= /0x[0-9A-Fa-f]+/ | /[0-9]+/
+
+define				::= #define name definition
+ifdef				::= #ifdef condition statement #endif
+ifndef				::= #ifndef condition statement #endif
+include				::= include file
+import				::= #import "filename"
+compound			::= <statement> <compound> | <statement>
+
+statement			::= <compound> | <define> | <ifdef> | <ifndef> | <syscall> | <struct> | <flags>
+
+struct              ::= <identifier> { <struct_elems> } <struct_attr>
+struct_elems        ::= <struct_elem> <struct_elems> '\n' | <struct_elem>
+struct_elem         ::= <type> <identifier>
+struct_attr         ::= [<type>] | <empty>
+
+flags               ::= <identifier> = <flag_elements>
+flag_elements       ::= <identifier>, <flag_elements> | <identifier>
+
+Default Types:
+ * void (default if type is excluded)
+ * int
+ * long
+ * size_t
+ * uint8_t
+ * uint16_t
+ * uint64_t
+ * kernel_ulong_t
+ * kernel_long_t
+ * string: zero terminated buffer
+ * stringnoz[n]: buffer of length n
+ * const[typ, x]: constant of value x with type typ
+ * ptr[typ, direction]: pointer to object of type typ, with direction in, out, inout
+ * array[typ, n]: array of n objects with type typ
