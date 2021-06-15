@@ -1,12 +1,14 @@
 CFLAGS += -ggdb -std=gnu99 -Wall
 
-parse: parse.tab.o lex.yy.o ast.o codegen.o
+all: parse
+
+parse: parse.tab.o lex.yy.o ast.o codegen.o parse.tab.h lex.yy.c
 	$(CC) $(CFLAGS) parse.tab.o lex.yy.o ast.o codegen.o -o ./parse -ll
 
-lex.yy.c lex.yy.h &: lex.l parse.tab.h
+lex.yy.c: lex.l parse.tab.h
 	flex lex.l
 
-parse.tab.c parse.tab.h &: parse.y
+parse.tab.c parse.tab.h: parse.y
 	bison -d -v -t -Wcounterexamples parse.y
 
 clean:
