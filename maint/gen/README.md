@@ -3,7 +3,8 @@ Syscall Definitions
 
 This syscall definition language is based on the [syzkaller description language](https://github.com/google/syzkaller/blob/master/docs/syscall_descriptions.md).
 
-The ordering of non-syscall statements will be directly reflected in the generated C code. All syscall and ifdef/ifndef statements will be placed at the end of the generated C code with their relative ordering preserved.
+The ordering of non-syscall statements will be directly reflected in the generated C code. 
+All syscall and ifdef/ifndef statements will be placed at the end of the generated C code with their relative ordering preserved.
 
 ## Syntax
 
@@ -18,12 +19,13 @@ The default types are the following:
  * `stddef.h` types: `size_t`, `ssize_t`, ...
  * `stdint.h` types: `uint8_t`, `int8_t`, `uint64_t`, `int64_t`, ...
  * kernel types: `kernel_long_t`, `kernel_ulong_t`, ...
- * `string`: A zero terminated char buffer
- * `stringnoz[n]`: A char buffer of length `n`
- * `const[typ, x]`: A constant of value `x` and type `typ`
+ * fd: A file descriptor
+ * `string`: A null terminated char buffer
+ * `stringnoz[n]`: A non-null terminated char buffer of length `n`
+ * `const[x]`: A constant of value `x` and type `typ`
  * `ptr[dir, typ]`: A pointer to object of type `typ`; direction can be `in`, `out`, `inout`
  * `array[typ, n]`: An buffer of `n` objects with type `typ`
- * `len[argname]`: A reference to the length of another parameter with name `argname`
+ * `ref[argname]`: A reference to the value of another parameter with name `argname`
  * `xorflags[flag_typ]`: A integer type containing mutually exclusive flags of type `flag_typ`
  * `orflags[flag_typ]`: A integer type containing flags that are ORed together of type `flag_typ`
 
@@ -67,25 +69,26 @@ Import statements have the format
 
 The contents of the `filename.def` will be treated as if they were placed in the current file.
 
-### #ifdef/#ifndef/#define
+### #ifdef/#ifndef
 
-Ifdef, ifndef, and define statements have the format
+Ifdef, ifndef statements have the format
 ```
 #ifdef condition
 #ifndef condition
-#define "definition"
 #endif
 #endif
 ```
 
-Ifdef, ifndef, and define statements will be included as-is in the generated output.
+Ifdef, ifndef, and define statements will be included as-is in the generated output. 
+Unlike C, these cannot be placed in the middle of another statement.
 
-### include
+### define/include
 
-Include statements have the format
+Include and define statements have the format
 ```
+define DEBUG 1
 include "filename"
 include <filename>
 ```
 
-Include statements will be included as-is in the generated output.
+Include and define statements will be included as-is in the generated output.

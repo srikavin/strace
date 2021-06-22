@@ -7,5 +7,5 @@ ioctl$BTRFS_IOC_SUBVOL_CREATE(fd fd, cmd const[BTRFS_IOC_SUBVOL_CREATE], arg ptr
 
 btrfs_ioctl_vol_args {
 	fd      fd
-	name    string[BTRFS_PATH_MAX]
+	name    stringnoz[BTRFS_PATH_MAX]
 }

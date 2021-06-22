@@ -9,6 +9,9 @@ extern FILE* yyin;
 extern int last_line_location;
 extern char *cur_filename;
 
+void *
+xmalloc(size_t n);
+
 extern int
 yylex_destroy(void);
 

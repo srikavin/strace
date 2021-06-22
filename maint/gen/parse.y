@@ -15,7 +15,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "symbols.h"
+
 static struct ast_node *root;
+
+static void error_prev_decl(char *identifier, struct ast_node *prev);
 %}
 
 %union {
@@ -40,6 +44,7 @@ static struct ast_node *root;
 %token RCURLY "}"
 %token COMMA ","
 %token EQUALS "="
+%token COLON ":"
 %token <str> DEFINE "#define"
 %token <str> IFDEF "#ifdef"
 %token ENDIF "#endif"
@@ -90,6 +95,10 @@ compound_stmt: statement linebreaks compound_stmt
 			$$ = create_ast_node(AST_COMPOUND, &@$);
 			$$->compound.children = $1;
 		}
+	| error linebreaks compound_stmt
+		{
+			$$ = $3;
+		}
 
 statement: define
 	| ifdef
@@ -107,7 +116,28 @@ syscall: IDENTIFIER "(" syscall_arglist ")" syscall_return_type syscall_attribut
 				.args = $3,
 				.return_type = $5
 			};
+
+			struct ast_node *prev_decl = symbol_add($1, $$);
+			if (prev_decl) {
+				error_prev_decl($1, prev_decl);
+				YYERROR;
+			}
 		}
+	| IDENTIFIER "(" ")" syscall_return_type syscall_attribute
+      		{
+      			$$ = create_ast_node(AST_SYSCALL, &@$);
+      			$$->syscall = (struct ast_syscall) {
+      				.name = $1,
+      				.args = NULL,
+      				.return_type = $4
+      			};
+
+      			struct ast_node *prev_decl = symbol_add($1, $$);
+      			if (prev_decl) {
+      				error_prev_decl($1, prev_decl);
+      				YYERROR;
+      			}
+      		}
 
 syscall_return_type: type
 		{
@@ -115,7 +145,7 @@ syscall_return_type: type
 		}
 	| %empty
 		{
-			$$ = NULL;
+			$$ = create_or_get_type(NULL, "void", NULL);
 		}
 
 syscall_attribute: "(" type_options ")"
@@ -138,11 +168,21 @@ syscall_arg: IDENTIFIER type
 
 type: IDENTIFIER
 		{
-			$$ = create_or_get_type($1, NULL);
+			char *error = NULL;
+			$$ = create_or_get_type(&error, $1, NULL);
+			if (error) {
+				yyerror("%s", error);
+				YYERROR;
+			}
 		}
 	| IDENTIFIER "[" type_options "]"
 		{
-			$$ = create_or_get_type($1, $3);
+			char *error = NULL;
+			$$ = create_or_get_type(&error, $1, $3);
+			if (error) {
+				yyerror("%s", error);
+				YYERROR;
+			}
 		}
 
 type_options: type_option "," type_options
@@ -151,6 +191,11 @@ type_options: type_option "," type_options
 		}
 	| type_option
 		{
+			$$ = create_ast_type_option_list($1, NULL);
+		}
+	| type_option ":" type_option
+		{
+			// TODO: use range type option here
 			$$ = create_ast_type_option_list($1, NULL);
 		}
 
@@ -196,6 +241,12 @@ struct: IDENTIFIER "{" linebreaks struct_elements "}" struct_attr
 			$$ = create_ast_node(AST_STRUCT, &@$);
 			$$->ast_struct.name = $1;
 			$$->ast_struct.elements = $4;
+			
+			struct ast_node *prev_decl = symbol_add($1, $$);
+			if (prev_decl) {
+				error_prev_decl($1, prev_decl);
+				YYERROR;
+			}
 		}
 	| IDENTIFIER "{" linebreaks "}" struct_attr
 		{
@@ -226,6 +277,13 @@ flags: IDENTIFIER "=" flag_elements
 		{
 			$$ = create_ast_node(AST_FLAGS, &@$);
 			$$->flags.name = $1;
+			$$->flags.values = $3;
+			
+			struct ast_node *prev_decl = symbol_add($1, $$);
+			if (prev_decl) {
+				error_prev_decl($1, prev_decl);
+				YYERROR;
+			}
 		}
 
 flag_elements: IDENTIFIER "," flag_elements
@@ -239,6 +297,12 @@ flag_elements: IDENTIFIER "," flag_elements
 
 %%
 
+static void error_prev_decl(char *identifier, struct ast_node *prev)
+{
+	yyerror("Previous declaration of %s at line %d col %d", identifier,
+			prev->loc.lineno, prev->loc.colno);
+}
+
 void
 yyerror (const char* fmt, ...)
 {
@@ -251,7 +315,7 @@ yyerror (const char* fmt, ...)
 
 	// add a new line if necessary
 	size_t len = strlen(buffer);
-	if (buffer[len - 1] != '\n') {
+	if (len > 0 && buffer[len - 1] != '\n') {
 		buffer[len] = '\n';
 		buffer[len + 1] = '\0';
 	}
@@ -272,15 +336,13 @@ yyerror (const char* fmt, ...)
 int
 main(int argc, char **argv)
 {
-	yydebug = 0;
-
 	if (argc < 2) {
-		fprintf(stderr, "Usage: %s [input files ...]\n", argv[0]);
+		fprintf(stderr, "Usage: %s [output directory] [input files ...]\n", argv[0]);
 		return EXIT_FAILURE;
 	}
 
 	bool failure = false;
-	for(int i = 1; i < argc; ++i){
+	for(int i = 2; i < argc; ++i){
 
 		if (!lexer_init_newfile(argv[i])){
 			failure = true;
@@ -292,7 +354,10 @@ main(int argc, char **argv)
 			continue;
 		}
 
-		if (!generate_code(argv[i], "test.c", root)) {
+		char outdir[1024];
+		snprintf(outdir, 1024, "%s/%s.c", argv[1], argv[i]);
+
+		if (!generate_code(argv[i], outdir, root)) {
 			failure = true;
 			free_ast_tree(root);
 			continue;

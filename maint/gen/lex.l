@@ -50,6 +50,7 @@ int last_line_location;
 "{" return T_LCURLY;
 "}" return T_RCURLY;
 "=" return T_EQUALS;
+":" return T_COLON;
 
 (-)?"0x"[0-9A-Fa-f]+ {
 	yylval.number.raw = strdup(yytext);
@@ -68,7 +69,7 @@ int last_line_location;
 	return T_IDENTIFIER;
 }
 
-"#define".+ {
+"define".+ {
 	yylval.str = strdup(yytext);
 	return T_DEFINE;
 }
@@ -97,6 +98,19 @@ int last_line_location;
 		yyterminate();
 	}
 
+	// eat characters until newline
+	int c = input();
+	cur_location++;
+	while(c && c != '\n'){
+		cur_location++;
+		c = input();
+	}
+	// update current location
+	yylloc.last_line++;
+	yylloc.last_column = 1;
+	last_line_location = cur_location;
+
+	// save current state
 	import_states[import_level++] = (struct saved_import_state) {
 		.filename = cur_filename,
 		.location = yylloc,
@@ -117,17 +131,22 @@ int last_line_location;
 		yyterminate();
 	}
 
-	// eat characters until newline
-	int c = input();
-	while(c && c != '\n'){
-		c = input();
-	}
-
 	yypush_buffer_state(yy_create_buffer(yyin, YY_BUF_SIZE));
 	BEGIN(INITIAL);
 }
 
 <<EOF>> {
+	// emit a newline at the end of a file before EOF
+	// to ensure the last statement in the file is terminated
+	static int emitted_newline;
+
+	if (!emitted_newline) {
+		emitted_newline = 1;
+		return T_NEWLINE;
+	}
+
+	emitted_newline = 0;
+
 	if (import_level > 0) {
 		free(cur_filename);
 

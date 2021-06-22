@@ -4,9 +4,11 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "deflang.h"
+#include "symbols.h"
 #include "parse.tab.h"
 
-static void *
+void *
 xmalloc(size_t n)
 {
 	void *ret = malloc(n);
@@ -134,7 +136,7 @@ compare_type_option_list(struct ast_type_option_list *a, struct ast_type_option_
 }
 
 struct ast_type *
-create_or_get_type(char *name, struct ast_type_option_list *options)
+create_or_get_type(char **error, char *name, struct ast_type_option_list *options)
 {
 	// check if we've seen this type before
 	for (struct known_type *cur = known_types; cur != NULL; cur = cur->next) {
@@ -146,13 +148,18 @@ create_or_get_type(char *name, struct ast_type_option_list *options)
 
 	// allocate a new type
 	struct known_type *type = xmalloc(sizeof *type);
-	*type = (struct known_type) {
-		.type = {
-			.name = name,
-			.options = options
-		},
-		.next = known_types
-	};
+
+	char *status = resolve_type(&type->type, name, options);
+	type->next = known_types;
+
+	if (error) {
+		*error = status;
+	}
+
+	if (status != NULL) {
+		free(type);
+		return NULL;
+	}
 
 	known_types = type;
 
@@ -224,7 +231,7 @@ free_ast_tree(struct ast_node *root)
 			free(root->define.value);
 			break;
 		case AST_INCLUDE:
-			free(root->define.value);
+			free(root->include.value);
 			break;
 		case AST_STRUCT: {
 			struct ast_struct_element *cur = root->ast_struct.elements;
@@ -234,7 +241,6 @@ free_ast_tree(struct ast_node *root)
 				free(tmp->name);
 				free(tmp);
 			}
-			free(root->ast_struct.name);
 			break;
 		}
 		case AST_COMPOUND: {
@@ -247,7 +253,6 @@ free_ast_tree(struct ast_node *root)
 			break;
 		}
 		case AST_SYSCALL: {
-			free(root->syscall.name);
 			struct ast_syscall_arg *cur = root->syscall.args;
 			while (cur != NULL) {
 				struct ast_syscall_arg *tmp = cur;
@@ -258,7 +263,6 @@ free_ast_tree(struct ast_node *root)
 			break;
 		}
 		case AST_FLAGS: {
-			free(root->flags.name);
 			struct ast_flag_values *cur = root->flags.values;
 			while (cur != NULL) {
 				struct ast_flag_values *tmp = cur;

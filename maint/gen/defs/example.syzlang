@@ -1,0 +1,13 @@
+open(file ptr[in, string], flags xor_flags[open_flags], mode or_flags[open_mode]) fd
+read(fd fd, buf ptr[out, stringnoz[ref[count]]], count size_t)
+write(fd fd, buf buffer[in], count len[buf]) int
+
+lseek(fd fd, offset off_t, whence int) off_t
+close(fd fd)
+
+sockaddr {
+	addr int
+}
+
+
+accept(sockfd int, addr ptr[inout, sockaddr], addrlen ptr[in, socklen_t], test ptr[in, string])

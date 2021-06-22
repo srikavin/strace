@@ -42,9 +42,68 @@ struct ast_syscall_arg {
 	struct ast_syscall_arg *next;
 };
 
+enum standard_types {
+	// non-special type
+	TYPE_BASIC,
+	// stringnoz[len]
+	TYPE_STRINGNOZ,
+	// const[typ, val]
+	TYPE_CONST,
+	// ptr[dir, typ]
+	TYPE_PTR,
+	// array[typ, len]
+	TYPE_ARRAY,
+	// ref[argname]
+	TYPE_REF,
+	// xorflags[flag_typ]
+	TYPE_XORFLAGS,
+	// orflags[flag_typ]
+	TYPE_ORFLAGS
+};
+
+#define IS_IN_PTR(x) ((x)->type == TYPE_PTR && \
+((x)->ptr.dir == PTR_DIR_INOUT || (x)->ptr.dir == PTR_DIR_IN))
+
+#define IS_OUT_PTR(x) ((x)->type == TYPE_PTR && \
+((x)->ptr.dir == PTR_DIR_INOUT || (x)->ptr.dir == PTR_DIR_OUT))
+
+#define IS_INOUT_PTR(x) ((x)->type == TYPE_PTR && (x)->ptr.dir == PTR_DIR_INOUT)
+
+enum ptr_dir {
+	PTR_DIR_IN,
+	PTR_DIR_OUT,
+	PTR_DIR_INOUT,
+};
+
 struct ast_type {
+	enum standard_types type;
 	char *name;
 	struct ast_type_option_list *options;
+	union {
+		struct {
+			struct ast_type_option *len;
+		} stringnoz;
+		struct {
+			struct ast_type_option *value;
+		} constt;
+		struct {
+			enum ptr_dir dir;
+			struct ast_type *type;
+		} ptr;
+		struct {
+			struct ast_type_option *type;
+			struct ast_type_option *len;
+		} array;
+		struct {
+			char *argname;
+		} ref;
+		struct {
+			struct ast_type_option *flag_type;
+		} xorflags;
+		struct {
+			struct ast_type_option *flag_type;
+		} orflags;
+	};
 };
 
 struct ast_type_option_list {
@@ -53,6 +112,7 @@ struct ast_type_option_list {
 };
 
 enum ast_type_option_child {
+	AST_TYPE_CHILD_RANGE,
 	AST_TYPE_CHILD_NUMBER,
 	AST_TYPE_CHILD_TYPE
 };
@@ -119,8 +179,11 @@ create_ast_syscall_arg(char *name, struct ast_type *type, struct ast_syscall_arg
 struct ast_flag_values *
 create_ast_flag_values(char *name, struct ast_flag_values *next);
 
+/*
+ * On error, returns NULL and sets an error string to error.
+ */
 struct ast_type *
-create_or_get_type(char *name, struct ast_type_option_list *options);
+create_or_get_type(char **error, char *name, struct ast_type_option_list *options);
 
 struct ast_type_option *
 create_or_get_type_option_number(struct ast_number number);
