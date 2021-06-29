@@ -219,6 +219,20 @@ create_or_get_type_option_nested(struct ast_type *child)
 	return &option->type_option;
 }
 
+struct ast_type_option *
+create_type_option_range(struct ast_type_option *min, struct ast_type_option *max)
+{
+	struct ast_type_option *ret = xmalloc(sizeof *ret);
+	*ret = (struct ast_type_option) {
+		.child_type = AST_TYPE_CHILD_RANGE,
+		.range = {
+			.min = min,
+			.max = max
+		}
+	};
+	return ret;
+}
+
 
 void
 free_ast_tree(struct ast_node *root)

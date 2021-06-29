@@ -64,7 +64,27 @@ int last_line_location;
 	return T_NUMBER;
 }
 
-[A-Za-z_][A-Za-z0-9_\$]* {
+(-)?"0b"[01]+ {
+	int sign = (yytext[0] == '-') ? -1 : +1;
+	int offset = ((sign == -1) ? sizeof("-0b") : sizeof("0b")) - 1;
+
+	// binary literals are supported in C by GNU extension
+	yylval.number.raw = strdup(yytext);
+	yylval.number.val = sign * strtol(yytext + offset, NULL, 2);
+	return T_NUMBER;
+}
+
+\'.\' {
+	yylval.number.raw = strdup(yytext);
+	yylval.number.val = yytext[1];
+	return T_NUMBER;
+}
+
+[A-Za-z_@\?][A-Za-z0-9_\?\$]* {
+	if (yytext[0] == '@' && strcmp(yytext, "@ret") != 0) {
+		yyerror("@ can only be used in @ret");
+		yyterminate();
+	}
 	yylval.str = strdup(yytext);
 	return T_IDENTIFIER;
 }
@@ -177,7 +197,7 @@ int last_line_location;
 	BEGIN(INITIAL);
 }
 
-<COMMENT_LINE,COMMENT_MULTI>. {}
+<COMMENT_LINE,COMMENT_MULTI>.|\n {}
 
 [ \t\r] {}
 

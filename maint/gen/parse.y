@@ -56,7 +56,7 @@ static void error_prev_decl(char *identifier, struct ast_node *prev);
 %type <node> compound compound_stmt statement define ifdef ifndef include syscall struct flags
 %type <type> type syscall_return_type
 %type <type_option_list> type_options
-%type <type_option> type_option
+%type <type_option> type_option type_option_range
 %type <syscall_arg> syscall_arglist syscall_arg
 %type <struct_element> struct_element struct_elements
 %type <flag_values> flag_elements
@@ -124,20 +124,20 @@ syscall: IDENTIFIER "(" syscall_arglist ")" syscall_return_type syscall_attribut
 			}
 		}
 	| IDENTIFIER "(" ")" syscall_return_type syscall_attribute
-      		{
-      			$$ = create_ast_node(AST_SYSCALL, &@$);
-      			$$->syscall = (struct ast_syscall) {
-      				.name = $1,
-      				.args = NULL,
-      				.return_type = $4
-      			};
+			{
+				$$ = create_ast_node(AST_SYSCALL, &@$);
+				$$->syscall = (struct ast_syscall) {
+					.name = $1,
+					.args = NULL,
+					.return_type = $4
+				};
 
-      			struct ast_node *prev_decl = symbol_add($1, $$);
-      			if (prev_decl) {
-      				error_prev_decl($1, prev_decl);
-      				YYERROR;
-      			}
-      		}
+				struct ast_node *prev_decl = symbol_add($1, $$);
+				if (prev_decl) {
+					error_prev_decl($1, prev_decl);
+					YYERROR;
+				}
+			}
 
 syscall_return_type: type
 		{
@@ -185,18 +185,22 @@ type: IDENTIFIER
 			}
 		}
 
-type_options: type_option "," type_options
+type_options: type_option_range "," type_options
 		{
 			$$ = create_ast_type_option_list($1, $3);
 		}
-	| type_option
+	| type_option_range
 		{
 			$$ = create_ast_type_option_list($1, NULL);
 		}
-	| type_option ":" type_option
+
+type_option_range: type_option ":" type_option
 		{
-			// TODO: use range type option here
-			$$ = create_ast_type_option_list($1, NULL);
+			$$ = create_type_option_range($1, $3);
+		}
+	| type_option
+		{
+			$$ = $1;
 		}
 
 type_option: type
@@ -241,7 +245,7 @@ struct: IDENTIFIER "{" linebreaks struct_elements "}" struct_attr
 			$$ = create_ast_node(AST_STRUCT, &@$);
 			$$->ast_struct.name = $1;
 			$$->ast_struct.elements = $4;
-			
+
 			struct ast_node *prev_decl = symbol_add($1, $$);
 			if (prev_decl) {
 				error_prev_decl($1, prev_decl);
@@ -278,7 +282,7 @@ flags: IDENTIFIER "=" flag_elements
 			$$ = create_ast_node(AST_FLAGS, &@$);
 			$$->flags.name = $1;
 			$$->flags.values = $3;
-			
+
 			struct ast_node *prev_decl = symbol_add($1, $$);
 			if (prev_decl) {
 				error_prev_decl($1, prev_decl);
@@ -336,35 +340,26 @@ yyerror (const char* fmt, ...)
 int
 main(int argc, char **argv)
 {
-	if (argc < 2) {
-		fprintf(stderr, "Usage: %s [output directory] [input files ...]\n", argv[0]);
+	if (argc < 3) {
+		fprintf(stderr, "Usage: %s [input file] [output file]\n", argv[0]);
 		return EXIT_FAILURE;
 	}
 
-	bool failure = false;
-	for(int i = 2; i < argc; ++i){
-
-		if (!lexer_init_newfile(argv[i])){
-			failure = true;
-			continue;
-		}
-
-		if (yyparse() != 0) {
-			failure = true;
-			continue;
-		}
-
-		char outdir[1024];
-		snprintf(outdir, 1024, "%s/%s.c", argv[1], argv[i]);
-
-		if (!generate_code(argv[i], outdir, root)) {
-			failure = true;
-			free_ast_tree(root);
-			continue;
-		}
-
-		free_ast_tree(root);
+	if (!lexer_init_newfile(argv[1])) {
+		fprintf(stderr, "Failed to open file %s\n", argv[1]);
+		return EXIT_FAILURE;
 	}
 
-	return failure;
+	if (yyparse() != 0) {
+		return EXIT_FAILURE;
+	}
+
+	if (!generate_code(argv[1], argv[2], root)) {
+		free_ast_tree(root);
+		return EXIT_FAILURE;
+	}
+
+	free_ast_tree(root);
+
+	return EXIT_SUCCESS;
 }

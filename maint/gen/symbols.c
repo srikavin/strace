@@ -72,8 +72,9 @@ resolve_type(struct ast_type *out, char *name, struct ast_type_option_list *opti
 		{"ptr", 2},
 		{"array", 2},
 		{"ref", 1},
-		{"xorflags", 1},
-		{"orflags", 1}
+		{"xor_flags", 2},
+		{"or_flags", 2},
+		{"ignore", 0}
 	};
 
 	size_t options_len = 0;
@@ -120,15 +121,30 @@ resolve_type(struct ast_type *out, char *name, struct ast_type_option_list *opti
 	} else if (strcmp(name, "ref") == 0) {
 		out->type = TYPE_REF;
 		if (options->option->child_type != AST_TYPE_CHILD_TYPE) {
-			return "first type option for len must be the name of another argument";
+			return "first type option for len must be the name of another argument or $ret";
 		}
-		out->ref.argname = options->option->type->name;
-	} else if (strcmp(name, "xorflags") == 0) {
+		if (strcmp(options->option->type->name, "@ret") == 0) {
+			out->ref.return_value = true;
+		} else {
+			out->ref.return_value = false;
+			out->ref.argname = options->option->type->name;
+		}
+	} else if (strcmp(name, "xor_flags") == 0) {
 		out->type = TYPE_XORFLAGS;
 		out->xorflags.flag_type = options->option;
-	} else if (strcmp(name, "orflags") == 0) {
+		if (options->option->child_type != AST_TYPE_CHILD_TYPE) {
+			return "first type option for ptr must be a string";
+		}
+		out->xorflags.dflt = options->next->option->type->name;
+	} else if (strcmp(name, "or_flags") == 0) {
 		out->type = TYPE_ORFLAGS;
 		out->orflags.flag_type = options->option;
+		if (options->option->child_type != AST_TYPE_CHILD_TYPE) {
+			return "first type option for ptr must be a string";
+		}
+		out->orflags.dflt = options->next->option->type->name;
+	} else if (strcmp(name, "ignore") == 0) {
+		out->type = TYPE_IGNORE;
 	}
 
 	return NULL;

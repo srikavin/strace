@@ -58,7 +58,9 @@ enum standard_types {
 	// xorflags[flag_typ]
 	TYPE_XORFLAGS,
 	// orflags[flag_typ]
-	TYPE_ORFLAGS
+	TYPE_ORFLAGS,
+	// ignore
+	TYPE_IGNORE
 };
 
 #define IS_IN_PTR(x) ((x)->type == TYPE_PTR && \
@@ -95,13 +97,17 @@ struct ast_type {
 			struct ast_type_option *len;
 		} array;
 		struct {
+			bool return_value;
+			// only set if return_value is false
 			char *argname;
 		} ref;
 		struct {
 			struct ast_type_option *flag_type;
+			char *dflt;
 		} xorflags;
 		struct {
 			struct ast_type_option *flag_type;
+			char *dflt;
 		} orflags;
 	};
 };
@@ -122,6 +128,10 @@ struct ast_type_option {
 	union {
 		struct ast_type *type;
 		struct ast_number number;
+		struct {
+			struct ast_type_option *min;
+			struct ast_type_option *max;
+		} range;
 	};
 };
 
@@ -190,6 +200,9 @@ create_or_get_type_option_number(struct ast_number number);
 
 struct ast_type_option *
 create_or_get_type_option_nested(struct ast_type *child);
+
+struct ast_type_option *
+create_type_option_range(struct ast_type_option *min, struct ast_type_option *max);
 
 void
 display_ast_tree(struct ast_node *root);

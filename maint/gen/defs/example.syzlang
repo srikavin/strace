@@ -1,9 +1,20 @@
-open(file ptr[in, string], flags xor_flags[open_flags], mode or_flags[open_mode]) fd
-read(fd fd, buf ptr[out, stringnoz[ref[count]]], count size_t)
-write(fd fd, buf buffer[in], count len[buf]) int
+gettid() tid
+
+access(file ptr[in, path], flags or_flags[access_modes, ?_OK])
+read(fd fd, buf ptr[out, stringnoz[ref[@ret]]], count size_t) int
+write(fd fd, buf ptr[in, stringnoz[ref[count]]], count size_t) int
+
+open(file ptr[in, path], flags or_flags[open_mode_flags, ???], mode or_flags[open_access_modes, ???]) fd
+close(fd fd)
+write2(fd fd, buf ptr[inout, int], count size_t) int
+
+
+prctl(option xor_flags[prctl_options, PR_???], arg2 ulong, arg3 ulong, arg4 ulong, arg5 ulong) int
+
+pread(fd fd, buf ptr[out, stringnoz[ref[count]]], count size_t, offset off_t) ssize_t
+pwrite(fd fd, buf ptr[in, stringnoz[ref[count]]], count size_t, offset off_t) ssize_t
 
 lseek(fd fd, offset off_t, whence int) off_t
-close(fd fd)
 
 sockaddr {
 	addr int

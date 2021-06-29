@@ -1,9 +1,9 @@
-CFLAGS += -ggdb -std=gnu99 -Wall -fsanitize=address
+CFLAGS += -ggdb -std=gnu99 -Wall -Wextra -fsanitize=address -O2
 
-all: parse
+all: gen
 
-parse: parse.tab.o lex.yy.o ast.o codegen.o symbols.o parse.tab.h lex.yy.c
-	$(CC) $(CFLAGS) parse.tab.o lex.yy.o ast.o codegen.o symbols.o -o ./parse -ll
+gen: parse.tab.o lex.yy.o ast.o codegen.o symbols.o parse.tab.h lex.yy.c
+	$(CC) $(CFLAGS) parse.tab.o lex.yy.o ast.o codegen.o symbols.o -o ./gen -ll
 
 lex.yy.c: lex.l parse.tab.h
 	flex lex.l
@@ -13,4 +13,4 @@ parse.tab.c parse.tab.h: parse.y
 
 clean:
 	rm -f lex.yy.o ast.o parse.tab.o codegen.o preprocess.o symbols.o
-	rm -f parse parse.tab.c parse.tab.h lex.yy.c lex.yy.h
+	rm -f gen parse.tab.c parse.tab.h lex.yy.c lex.yy.h
