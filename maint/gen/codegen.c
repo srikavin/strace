@@ -44,7 +44,8 @@ struct {
 	{"longdouble", "long double"},
 	{"string", "char"},
 	{"path", "char"},
-	{"size", "size_t"},
+	{"size", "kernel_size_t"},
+	{"size_t", "kernel_size_t"},
 	{"gid", "gid_t"}
 };
 
@@ -644,6 +645,7 @@ generate_code(const char *in_filename, const char *out_filename, struct ast_node
 	outf(out, "%s",
 		 "#include <stddef.h>\n"
 		 "#include \"defs.h\"\n\n"
+		 "typedef kernel_ulong_t kernel_size_t;\n\n"
 	);
 
 	struct codegen_ctx ctx = {
