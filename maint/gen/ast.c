@@ -21,6 +21,19 @@ xmalloc(size_t n)
 	return ret;
 }
 
+void *
+xcalloc(size_t n)
+{
+	void *ret = calloc(1, n);
+
+	if (!ret) {
+		fprintf(stderr, "allocation failed\n");
+		exit(EXIT_FAILURE);
+	}
+
+	return ret;
+}
+
 struct ast_node *
 create_ast_node(enum ast_node_type type, void *loc)
 {

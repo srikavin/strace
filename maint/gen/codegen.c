@@ -84,6 +84,8 @@ char *unsigned_int_types[] = {
 
 #define OUTS(s) outs(out, s)
 
+#define VARIANT_FUNC_NAME_LEN 64
+
 static void
 outf_indent(int indent_level, FILE *out, const char *fmt,
 			...) __attribute__((format(printf, 3, 4)));
@@ -146,15 +148,13 @@ struct codegen_ctx {
 };
 
 static void
-log_warning(char *fmt, struct ast_node *node, ...)
+log_warning(char *fmt, struct ast_loc node, ...)
 {
 	va_list args;
 	va_start(args, node);
 
 	fprintf(stderr, "Codegen Warning: ");
-	if (node) {
-		fprintf(stderr, "line %d, col %d: ", node->loc.lineno, node->loc.colno);
-	}
+	fprintf(stderr, "line %d, col %d: ", node.lineno, node.colno);
 
 	vfprintf(stderr, fmt, args);
 
@@ -288,7 +288,7 @@ get_sys_func_return_flags(char out[static 64], struct ast_type *type, bool is_io
  * The specified type option MUST NOT be a range.
  */
 static char *
-resolve_type_option_to_value(struct ast_node *node, struct ast_type_option *option)
+resolve_type_option_to_value(struct syscall *syscall, struct ast_type_option *option)
 {
 	assert(option->type != AST_TYPE_CHILD_RANGE);
 
@@ -310,12 +310,11 @@ resolve_type_option_to_value(struct ast_node *node, struct ast_type_option *opti
 			bool found = false;
 			size_t index = 0;
 
-			for (struct ast_syscall_arg *cur = node->syscall.args; cur != NULL; cur = cur->next) {
-				if (strcmp(option->type->ref.argname, cur->name) == 0) {
+			for (; index < syscall->arg_count; ++index) {
+				if (strcmp(option->type->ref.argname, syscall->args[index].name) == 0) {
 					found = true;
 					break;
 				}
-				index++;
 			}
 
 			if (found) {
@@ -325,7 +324,7 @@ resolve_type_option_to_value(struct ast_node *node, struct ast_type_option *opti
 			}
 
 			log_warning("Failed to resolve 'ref' type with value \"%s\" to argument",
-						node, option->type->ref.argname);
+						syscall->loc, option->type->ref.argname);
 			return "#error FAILED TO RESOLVE REF TYPE TO VALUE";
 		} else {
 			// assume the given value is a constant or from a #define
@@ -350,6 +349,7 @@ store_single_value(FILE *out, struct ast_type *type, char *arg, int indent_level
 	indent_level++;
 
 	OUTFI("void *tmp_buffer = xmalloc(sizeof(%s));\n", type_to_ctype(type->ptr.type));
+	OUTFI("memcpy(tmp_buffer, tmp_var, sizeof(%s));\n", type_to_ctype(type->ptr.type));
 	OUTFI("set_tcb_priv_data(tcp, tmp_buffer, free);\n");
 
 	indent_level--;
@@ -391,12 +391,12 @@ generate_basic_printer(FILE *out, const char *tcp, const char *arg, bool enterin
 }
 
 static void
-generate_printer(struct codegen_ctx *ctx, FILE *out, struct ast_node *node,
+generate_printer(struct codegen_ctx *ctx, FILE *out, struct syscall *syscall,
 				 const char *argname, const char *tcp, const char *arg, bool entering,
 				 struct ast_type *type, int indent_level);
 
 static void
-generate_printer_ptr(struct codegen_ctx *ctx, FILE *out, struct ast_node *node,
+generate_printer_ptr(struct codegen_ctx *ctx, FILE *out, struct syscall *syscall,
 					 const char *argname, const char *tcp, const char *arg, bool entering,
 					 struct ast_type *type, int indent_level)
 {
@@ -417,11 +417,11 @@ generate_printer_ptr(struct codegen_ctx *ctx, FILE *out, struct ast_node *node,
 			OUTFI("\tprintaddr(%s);\n", arg);
 			OUTFI("} else {\n");
 			OUTFI("\tprintstrn(%s, %s, %s);\n", tcp, arg,
-				  resolve_type_option_to_value(node, underlying->stringnoz.len));
+				  resolve_type_option_to_value(syscall, underlying->stringnoz.len));
 			OUTFI("}\n");
 		} else {
 			OUTFI("printstrn(%s, %s, %s);\n", tcp, arg,
-				  resolve_type_option_to_value(node, underlying->stringnoz.len));
+				  resolve_type_option_to_value(syscall, underlying->stringnoz.len));
 		}
 	} else {
 		// copy from target memory and use decoder for resulting value
@@ -433,8 +433,8 @@ generate_printer_ptr(struct codegen_ctx *ctx, FILE *out, struct ast_node *node,
 			OUTFI("if (!umove_or_printaddr(%s, %s, &%s)) {\n ",
 				  tcp, arg, var_name);
 
-			generate_printer(ctx, out, node, argname, tcp, var_name, entering, type->ptr.type,
-							 indent_level + 1);
+			generate_printer(ctx, out, syscall, argname, tcp, var_name, entering,
+							 type->ptr.type, indent_level + 1);
 
 			OUTSI("}\n");
 		}
@@ -445,7 +445,7 @@ generate_printer_ptr(struct codegen_ctx *ctx, FILE *out, struct ast_node *node,
  * Outputs a call to a function/macro to print out arg with the given type.
  */
 static void
-generate_printer(struct codegen_ctx *ctx, FILE *out, struct ast_node *node,
+generate_printer(struct codegen_ctx *ctx, FILE *out, struct syscall *syscall,
 				 const char *argname, const char *tcp, const char *arg, bool entering,
 				 struct ast_type *type, int indent_level)
 {
@@ -466,24 +466,40 @@ generate_printer(struct codegen_ctx *ctx, FILE *out, struct ast_node *node,
 			}
 		}
 
-		log_warning("No known printer for basic type %s", node, type->name);
+		log_warning("No known printer for basic type %s", syscall->loc, type->name);
 		outf_indent(indent_level, out, "#error UNHANDLED BASIC TYPE: %s\n", type->name);
 	} else if (type->type == TYPE_PTR) {
-		generate_printer_ptr(ctx, out, node, argname, tcp, arg, entering, type, indent_level);
+		generate_printer_ptr(ctx, out, syscall, argname, tcp, arg, entering, type, indent_level);
 	} else if (type->type == TYPE_ORFLAGS) {
 		OUTFI("printflags(%s, %s, \"%s\");\n", type->orflags.flag_type->type->name, arg,
 			  type->orflags.dflt);
 	} else if (type->type == TYPE_XORFLAGS) {
 		OUTFI("printxval(%s, %s, \"%s\");\n", type->xorflags.flag_type->type->name, arg,
 			  type->orflags.dflt);
-	} else if (type->type == TYPE_IGNORE) {
-		// do nothing
 	} else if (type->type == TYPE_STRINGNOZ || strcmp(type->name, "string") == 0) {
 		log_warning("Type '%s' should be wrapped in a ptr type to indicate direction",
-					node, type->name);
+					syscall->loc, type->name);
 	} else {
-		log_warning("Type '%s' is currently unhandled", node, type->name);
+		log_warning("Type '%s' is currently unhandled", syscall->loc, type->name);
 		outf_indent(indent_level, out, "#error UNHANDLED TYPE: %s\n", type->name);
+	}
+}
+
+/*
+ * Transforms a variant syscall name (like fcntl$F_DUPFD) to a valid C function
+ * name (like var_fcntl_F_DUPFD).
+ */
+static void
+get_variant_function_name(char out[static VARIANT_FUNC_NAME_LEN], char *variant_name)
+{
+	snprintf(out, VARIANT_FUNC_NAME_LEN, "var_%s", variant_name);
+	for (int i = 0; i < VARIANT_FUNC_NAME_LEN; ++i) {
+		if (out[i] == '\0') {
+			break;
+		}
+		if (out[i] == '$') {
+			out[i] = '_';
+		}
 	}
 }
 
@@ -491,19 +507,26 @@ generate_printer(struct codegen_ctx *ctx, FILE *out, struct ast_node *node,
  * Prints out a decoder for the given system call.
  */
 static void
-generate_decoder(struct codegen_ctx *ctx, FILE *out, struct ast_node *node)
+generate_decoder(struct codegen_ctx *ctx, FILE *out, struct syscall *syscall, bool is_variant)
 {
 	int indent_level = 0;
 
 	// determine which strategy to use depending on how many OUT ptrs there are
 	size_t out_ptrs = 0;
-	for (struct ast_syscall_arg *arg = node->syscall.args; arg != NULL; arg = arg->next) {
-		if (IS_OUT_PTR(arg->type)) {
+	for (size_t i = 0; i < syscall->arg_count; i++) {
+		if (IS_OUT_PTR(syscall->args[i].type)) {
 			out_ptrs++;
 		}
 	}
 
-	OUTFI("SYS_FUNC(%s)\n", node->syscall.name);
+	if (is_variant) {
+		char func_name[VARIANT_FUNC_NAME_LEN];
+		get_variant_function_name(func_name, syscall->name);
+		OUTFI("static int\n");
+		OUTFI("%s(struct tcb *tcp)\n", func_name);
+	} else {
+		OUTFI("SYS_FUNC(%s)\n", syscall->name);
+	}
 	OUTSI("{\n");
 	indent_level++;
 
@@ -512,57 +535,64 @@ generate_decoder(struct codegen_ctx *ctx, FILE *out, struct ast_node *node)
 
 	if (out_ptrs == 0) {
 		// 0 out ptrs: print all args in sysenter
-		for (struct ast_syscall_arg *arg = node->syscall.args; arg != NULL; arg = arg->next) {
-			OUTFI("/* arg: %s (%s) */\n", arg->name, type_to_ctype(arg->type));
+		for (size_t i = 0; i < syscall->arg_count; i++) {
+			struct syscall_argument arg = syscall->args[i];
+			OUTFI("/* arg: %s (%s) */\n", arg.name, type_to_ctype(arg.type));
 			get_syscall_arg_value(arg_val, "tcp", arg_index++);
 
-			generate_printer(ctx, out, node, arg->name, "tcp", arg_val, true, arg->type,
+			generate_printer(ctx, out, syscall, arg.name, "tcp", arg_val, true, arg.type,
 							 indent_level);
 
-			if (arg->next) {
+			if (i < syscall->arg_count - 1) {
 				OUTSI("tprint_arg_next();\n");
 			}
 			OUTC('\n');
 		}
 	} else if (out_ptrs == 1) {
 		// == 1 out ptrs: print args until the out ptr in sysenter, rest in sysexit
-		struct ast_syscall_arg *cur = node->syscall.args;
+		size_t cur = 0;
 
 		OUTSI("if (entering(tcp)) {\n");
 		indent_level++;
-		for (; cur != NULL && !IS_OUT_PTR(cur->type); cur = cur->next) {
-			OUTFI("/* arg: %s (%s) */\n", cur->name, type_to_ctype(cur->type));
+		for (; cur < syscall->arg_count; ++cur) {
+			struct syscall_argument arg = syscall->args[cur];
+			if (IS_OUT_PTR(arg.type)) {
+				break;
+			}
+
+			OUTFI("/* arg: %s (%s) */\n", arg.name, type_to_ctype(arg.type));
 			get_syscall_arg_value(arg_val, "tcp", arg_index++);
 
-			generate_printer(ctx, out, node, cur->name, "tcp", arg_val, true, cur->type,
+			generate_printer(ctx, out, syscall, arg.name, "tcp", arg_val, true, arg.type,
 							 indent_level);
 
-			if (cur->next) {
+			if (cur < syscall->arg_count - 1) {
 				OUTSI("tprint_arg_next();\n\n");
 			}
 		}
 
-		if (IS_INOUT_PTR(cur->type)) {
-			store_single_value(out, cur->type, arg_val, indent_level);
+		if (IS_INOUT_PTR(syscall->args[cur].type)) {
+			store_single_value(out, syscall->args[cur].type, arg_val, indent_level);
 		}
 
 		OUTSI("return 0;\n");
 		indent_level--;
 		OUTSI("}\n");
 
-		if (IS_INOUT_PTR(cur->type)) {
+		if (IS_INOUT_PTR(syscall->args[cur].type)) {
 			// TODO: compare the current value with the previous value
 			//		 and print only if changed
 		}
 
-		for (; cur != NULL; cur = cur->next) {
-			OUTFI("/* arg: %s (%s) */\n", cur->name, type_to_ctype(cur->type));
+		for (; cur < syscall->arg_count; ++cur) {
+			struct syscall_argument arg = syscall->args[cur];
+			OUTFI("/* arg: %s (%s) */\n", arg.name, type_to_ctype(arg.type));
 			get_syscall_arg_value(arg_val, "tcp", arg_index++);
 
-			generate_printer(ctx, out, node, cur->name, "tcp", arg_val, false, cur->type,
+			generate_printer(ctx, out, syscall, arg.name, "tcp", arg_val, false, arg.type,
 							 indent_level);
 
-			if (cur->next) {
+			if (cur < syscall->arg_count - 1) {
 				OUTSI("tprint_arg_next();\n");
 			}
 			OUTC('\n');
@@ -573,67 +603,128 @@ generate_decoder(struct codegen_ctx *ctx, FILE *out, struct ast_node *node)
 	}
 
 	char ret_flags[64];
-	get_sys_func_return_flags(ret_flags, node->syscall.return_type, false);
+	get_sys_func_return_flags(ret_flags, &syscall->ret, false);
 	OUTFI("return %s;\n", ret_flags);
 
 	indent_level--;
 	OUTSI("}\n\n");
 }
 
-static void
-visit_node(struct codegen_ctx *ctx, FILE *out, struct ast_node *node, int indent_level)
+void
+out_statement_condition_start(FILE *out, struct statement_condition *condition)
 {
-	outf_indent(indent_level, out, "// Debug Location: %s:%d:%d Node Type: ",
-				ctx->in_filename, node->loc.lineno, node->loc.colno);
+	if (condition == NULL) {
+		return;
+	}
+	for (size_t i = 0; i < condition->count; ++i) {
+		OUTF("%s\n", condition->values[i]);
+	}
+}
 
-	switch (node->type) {
-		case AST_INCLUDE: {
-			OUTS("AST_INCLUDE\n");
-			OUTC('#');
-			OUTS(node->include.value);
-			OUTC('\n');
-			break;
+void
+out_statement_condition_end(FILE *out, struct statement_condition *condition)
+{
+	if (condition == NULL) {
+		return;
+	}
+	for (size_t i = 0; i < condition->count; ++i) {
+		OUTS("#endif\n\n");
+	}
+}
+
+void
+output_defines(FILE *out, struct preprocessor_statement_list *defines)
+{
+	struct preprocessor_statement_list *cur = defines;
+	while (cur != NULL) {
+		out_statement_condition_start(out, cur->stmt.conditions);
+		OUTF("#%s\n", cur->stmt.value);
+		out_statement_condition_end(out, cur->stmt.conditions);
+		cur = cur->next;
+	}
+}
+
+void
+output_variant_syscall_group(struct codegen_ctx *ctx, FILE *out, struct syscall_group *group)
+{
+	int indent_level = 0;
+	OUTFI("SYS_FUNC(%s) {\n", group->base->name);
+	indent_level++;
+
+	for (size_t child = 0; child < group->child_count; child++) {
+		if (child == 0) {
+			OUTFI("if (");
+		} else {
+			OUTFI("else if (");
 		}
-		case AST_DEFINE: {
-			OUTS("AST_DEFINE\n");
-			OUTS(node->define.value);
-			OUTC('\n');
-			break;
-		}
-		case AST_IFDEF: {
-			OUTS("AST_IFDEF\n");
-			OUTS(node->ifdef.value);
-			OUTC('\n');
-			visit_node(ctx, out, node->ifdef.child, indent_level);
-			OUTS("#endif\n");
-			break;
-		}
-		case AST_COMPOUND: {
-			OUTS("AST_COMPOUND\n");
-			for (struct ast_node *cur = node->compound.children; cur != NULL; cur = cur->next) {
-				visit_node(ctx, out, cur, indent_level);
+
+		bool first = true;
+		struct syscall *cur_child = group->children[child].base;
+		for (size_t arg_idx = 0; arg_idx < cur_child->arg_count; ++arg_idx) {
+			struct syscall_argument arg = cur_child->args[arg_idx];
+
+			if (arg.type->type != TYPE_CONST) {
+				continue;
 			}
-			break;
+
+			if (first) {
+				first = false;
+			} else {
+				OUTF(" &&");
+			}
+
+			char arg_str[16];
+			get_syscall_arg_value(arg_str, "tcp", arg_idx);
+			OUTF("(%s) == (%s)",
+				 arg_str,
+				 resolve_type_option_to_value(cur_child, arg.type->constt.value));
 		}
-		case AST_SYSCALL: {
-			OUTS("AST_SYSCALL\n");
-			generate_decoder(ctx, out, node);
-			break;
+		OUTF(") {\n");
+
+		indent_level++;
+
+		char func_name[VARIANT_FUNC_NAME_LEN];
+		get_variant_function_name(func_name, cur_child->name);
+		OUTFI("return %s(tcp);\n", func_name);
+
+		indent_level--;
+		OUTFI("}\n");
+	}
+
+	OUTFI("else {\n");
+	indent_level++;
+
+	char func_name[VARIANT_FUNC_NAME_LEN];
+	get_variant_function_name(func_name, group->base->name);
+	OUTFI("return %s(tcp);\n", func_name);
+
+	indent_level--;
+	OUTFI("}\n");
+
+	indent_level--;
+	OUTFI("}\n\n");
+}
+
+void
+output_syscall_groups(struct codegen_ctx *ctx, FILE *out, struct syscall_group *groups,
+					  size_t group_count, bool variant)
+{
+	for (size_t i = 0; i < group_count; ++i) {
+		if (groups[i].child_count == 0) {
+			generate_decoder(ctx, out, groups[i].base, variant);
+			continue;
 		}
-		case AST_STRUCT: {
-			OUTS("AST_STRUCT\n");
-			OUTF("static void\ngen_print_%s() {}\n", node->ast_struct.name);
-			break;
-		}
-		case AST_FLAGS: {
-			OUTS("AST_FLAGS\n");
-			break;
-		}
+
+		output_syscall_groups(ctx, out, groups[i].children, groups[i].child_count, true);
+
+		generate_decoder(ctx, out, groups[i].base, true);
+
+		output_variant_syscall_group(ctx, out, &groups[i]);
 	}
 }
 
 bool
-generate_code(const char *in_filename, const char *out_filename, struct ast_node *root)
+generate_code(const char *in_filename, const char *out_filename, struct processed_ast *ast)
 {
 	FILE *out = fopen(out_filename, "w");
 
@@ -652,7 +743,8 @@ generate_code(const char *in_filename, const char *out_filename, struct ast_node
 		.in_filename = in_filename
 	};
 
-	visit_node(&ctx, out, root, 0);
+	output_defines(out, ast->preprocessor_stmts);
+	output_syscall_groups(&ctx, out, ast->syscall_groups, ast->syscall_group_count, false);
 
 	fclose(out);
 

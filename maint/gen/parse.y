@@ -354,7 +354,7 @@ main(int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-	if (!generate_code(argv[1], argv[2], root)) {
+	if (!generate_code(argv[1], argv[2], preprocess(root))) {
 		free_ast_tree(root);
 		return EXIT_FAILURE;
 	}

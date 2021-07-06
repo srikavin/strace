@@ -30,7 +30,6 @@ The default types are the following:
  * `ref[argname]`: A reference to the value of another parameter with name `argname` or `@ret`
  * `xor_flags[flag_typ, ???]`: A integer type containing mutually exclusive flags of type `flag_typ`
  * `or_flags[flag_typ, ???]`: A integer type containing flags that are ORed together of type `flag_typ`
- * `ignore`: An ignored argument
 
  User defined types include structs, unions, and other types from included header files.
 
@@ -95,3 +94,6 @@ include <filename>
 ```
 
 Include and define statements will be included as-is in the generated output.
+
+
+## Implementation

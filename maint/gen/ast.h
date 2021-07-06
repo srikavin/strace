@@ -140,12 +140,14 @@ struct ast_flag_values {
 	struct ast_flag_values *next;
 };
 
+struct ast_loc {
+	int lineno;
+	int colno;
+};
+
 struct ast_node {
 	enum ast_node_type type;
-	struct {
-		int lineno;
-		int colno;
-	} loc;
+	struct ast_loc loc;
 
 	// used when this node's parent is AST_COMPOUND
 	struct ast_node *next;
