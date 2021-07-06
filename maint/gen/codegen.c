@@ -70,6 +70,10 @@ char *unsigned_int_types[] = {
 	"size"
 };
 
+#define VARIANT_FUNC_NAME_LEN 64
+#define SYSCALL_RET_FLAG_LEN 64
+#define SYSCALL_ARG_STR_LEN 16
+
 #define ARRAY_LEN(x) (sizeof(x) / sizeof((x)[0]))
 
 /* convenience macros */
@@ -83,8 +87,6 @@ char *unsigned_int_types[] = {
 #define OUTSI(s) outs_indent(indent_level, out, s)
 
 #define OUTS(s) outs(out, s)
-
-#define VARIANT_FUNC_NAME_LEN 64
 
 static void
 outf_indent(int indent_level, FILE *out, const char *fmt,
@@ -143,10 +145,6 @@ outf_indent(int indent_level, FILE *out, const char *fmt, ...)
 	va_end(args);
 }
 
-struct codegen_ctx {
-	const char *in_filename;
-};
-
 static void
 log_warning(char *fmt, struct ast_loc node, ...)
 {
@@ -191,18 +189,18 @@ is_unsigned_integer_typename(const char *name)
  * Stores a string referring to the i-th argument in the current syscall.
  */
 static void
-get_syscall_arg_value(char out[static 16], const char *tcp, size_t i)
+get_syscall_arg_value(char out[static SYSCALL_ARG_STR_LEN], const char *tcp, size_t i)
 {
-	snprintf(out, 16, "(%s)->u_arg[%zu]", tcp, i);
+	snprintf(out, SYSCALL_ARG_STR_LEN, "(%s)->u_arg[%zu]", tcp, i);
 }
 
 /*
  * Stores a string referring to the return value of the current syscall.
  */
 static void
-get_syscall_ret_value(char out[static 16], const char *tcp)
+get_syscall_ret_value(char out[static SYSCALL_ARG_STR_LEN], const char *tcp)
 {
-	snprintf(out, 16, "(%s)->u_rval", tcp);
+	snprintf(out, SYSCALL_ARG_STR_LEN, "(%s)->u_rval", tcp);
 }
 
 /*
@@ -245,7 +243,8 @@ type_to_ctype(struct ast_type *type)
  * Get flags to return from a SYS_FUNC.
  */
 static void
-get_sys_func_return_flags(char out[static 64], struct ast_type *type, bool is_ioctl)
+get_sys_func_return_flags(char out[static SYSCALL_RET_FLAG_LEN], struct ast_type *type,
+						  bool is_ioctl)
 {
 	struct {
 		char *type;
@@ -272,9 +271,9 @@ get_sys_func_return_flags(char out[static 64], struct ast_type *type, bool is_io
 	}
 
 	if (following) {
-		snprintf(out, 64, "%s | %s", base, following);
+		snprintf(out, SYSCALL_RET_FLAG_LEN, "%s | %s", base, following);
 	} else {
-		snprintf(out, 64, "%s", base);
+		snprintf(out, SYSCALL_RET_FLAG_LEN, "%s", base);
 	}
 }
 
@@ -301,7 +300,7 @@ resolve_type_option_to_value(struct syscall *syscall, struct ast_type_option *op
 
 			// syscall return value
 			if (option->type->ref.return_value) {
-				char *ret = xmalloc(16);
+				char *ret = xmalloc(SYSCALL_ARG_STR_LEN);
 				get_syscall_ret_value(ret, "tcp");
 				return ret;
 			}
@@ -318,7 +317,7 @@ resolve_type_option_to_value(struct syscall *syscall, struct ast_type_option *op
 			}
 
 			if (found) {
-				char *ret = xmalloc(16);
+				char *ret = xmalloc(SYSCALL_ARG_STR_LEN);
 				get_syscall_arg_value(ret, "tcp", index);
 				return ret;
 			}
@@ -391,13 +390,13 @@ generate_basic_printer(FILE *out, const char *tcp, const char *arg, bool enterin
 }
 
 static void
-generate_printer(struct codegen_ctx *ctx, FILE *out, struct syscall *syscall,
-				 const char *argname, const char *tcp, const char *arg, bool entering,
+generate_printer(FILE *out, struct syscall *syscall, const char *argname,
+				 const char *tcp, const char *arg, bool entering,
 				 struct ast_type *type, int indent_level);
 
 static void
-generate_printer_ptr(struct codegen_ctx *ctx, FILE *out, struct syscall *syscall,
-					 const char *argname, const char *tcp, const char *arg, bool entering,
+generate_printer_ptr(FILE *out, struct syscall *syscall, const char *argname,
+					 const char *tcp, const char *arg, bool entering,
 					 struct ast_type *type, int indent_level)
 {
 	struct ast_type *underlying = type->ptr.type;
@@ -433,7 +432,7 @@ generate_printer_ptr(struct codegen_ctx *ctx, FILE *out, struct syscall *syscall
 			OUTFI("if (!umove_or_printaddr(%s, %s, &%s)) {\n ",
 				  tcp, arg, var_name);
 
-			generate_printer(ctx, out, syscall, argname, tcp, var_name, entering,
+			generate_printer(out, syscall, argname, tcp, var_name, entering,
 							 type->ptr.type, indent_level + 1);
 
 			OUTSI("}\n");
@@ -445,7 +444,7 @@ generate_printer_ptr(struct codegen_ctx *ctx, FILE *out, struct syscall *syscall
  * Outputs a call to a function/macro to print out arg with the given type.
  */
 static void
-generate_printer(struct codegen_ctx *ctx, FILE *out, struct syscall *syscall,
+generate_printer(FILE *out, struct syscall *syscall,
 				 const char *argname, const char *tcp, const char *arg, bool entering,
 				 struct ast_type *type, int indent_level)
 {
@@ -469,7 +468,7 @@ generate_printer(struct codegen_ctx *ctx, FILE *out, struct syscall *syscall,
 		log_warning("No known printer for basic type %s", syscall->loc, type->name);
 		outf_indent(indent_level, out, "#error UNHANDLED BASIC TYPE: %s\n", type->name);
 	} else if (type->type == TYPE_PTR) {
-		generate_printer_ptr(ctx, out, syscall, argname, tcp, arg, entering, type, indent_level);
+		generate_printer_ptr(out, syscall, argname, tcp, arg, entering, type, indent_level);
 	} else if (type->type == TYPE_ORFLAGS) {
 		OUTFI("printflags(%s, %s, \"%s\");\n", type->orflags.flag_type->type->name, arg,
 			  type->orflags.dflt);
@@ -507,7 +506,7 @@ get_variant_function_name(char out[static VARIANT_FUNC_NAME_LEN], char *variant_
  * Prints out a decoder for the given system call.
  */
 static void
-generate_decoder(struct codegen_ctx *ctx, FILE *out, struct syscall *syscall, bool is_variant)
+generate_decoder(FILE *out, struct syscall *syscall, bool is_variant)
 {
 	int indent_level = 0;
 
@@ -531,7 +530,7 @@ generate_decoder(struct codegen_ctx *ctx, FILE *out, struct syscall *syscall, bo
 	indent_level++;
 
 	int arg_index = 0;
-	char arg_val[16];
+	char arg_val[SYSCALL_ARG_STR_LEN];
 
 	if (out_ptrs == 0) {
 		// 0 out ptrs: print all args in sysenter
@@ -540,7 +539,7 @@ generate_decoder(struct codegen_ctx *ctx, FILE *out, struct syscall *syscall, bo
 			OUTFI("/* arg: %s (%s) */\n", arg.name, type_to_ctype(arg.type));
 			get_syscall_arg_value(arg_val, "tcp", arg_index++);
 
-			generate_printer(ctx, out, syscall, arg.name, "tcp", arg_val, true, arg.type,
+			generate_printer(out, syscall, arg.name, "tcp", arg_val, true, arg.type,
 							 indent_level);
 
 			if (i < syscall->arg_count - 1) {
@@ -563,7 +562,7 @@ generate_decoder(struct codegen_ctx *ctx, FILE *out, struct syscall *syscall, bo
 			OUTFI("/* arg: %s (%s) */\n", arg.name, type_to_ctype(arg.type));
 			get_syscall_arg_value(arg_val, "tcp", arg_index++);
 
-			generate_printer(ctx, out, syscall, arg.name, "tcp", arg_val, true, arg.type,
+			generate_printer(out, syscall, arg.name, "tcp", arg_val, true, arg.type,
 							 indent_level);
 
 			if (cur < syscall->arg_count - 1) {
@@ -589,7 +588,7 @@ generate_decoder(struct codegen_ctx *ctx, FILE *out, struct syscall *syscall, bo
 			OUTFI("/* arg: %s (%s) */\n", arg.name, type_to_ctype(arg.type));
 			get_syscall_arg_value(arg_val, "tcp", arg_index++);
 
-			generate_printer(ctx, out, syscall, arg.name, "tcp", arg_val, false, arg.type,
+			generate_printer(out, syscall, arg.name, "tcp", arg_val, false, arg.type,
 							 indent_level);
 
 			if (cur < syscall->arg_count - 1) {
@@ -602,7 +601,7 @@ generate_decoder(struct codegen_ctx *ctx, FILE *out, struct syscall *syscall, bo
 		OUTSI("#error TODO\n");
 	}
 
-	char ret_flags[64];
+	char ret_flags[SYSCALL_RET_FLAG_LEN];
 	get_sys_func_return_flags(ret_flags, &syscall->ret, false);
 	OUTFI("return %s;\n", ret_flags);
 
@@ -645,21 +644,21 @@ output_defines(FILE *out, struct preprocessor_statement_list *defines)
 }
 
 void
-output_variant_syscall_group(struct codegen_ctx *ctx, FILE *out, struct syscall_group *group)
+output_variant_syscall_group(FILE *out, struct syscall_group *group)
 {
 	int indent_level = 0;
 	OUTFI("SYS_FUNC(%s) {\n", group->base->name);
 	indent_level++;
 
+	OUTSI("");
 	for (size_t child = 0; child < group->child_count; child++) {
-		if (child == 0) {
-			OUTFI("if (");
-		} else {
-			OUTFI("else if (");
-		}
+		struct syscall *cur_child = group->children[child].base;
+
+		out_statement_condition_start(out, cur_child->conditions);
+
+		OUTS("if (");
 
 		bool first = true;
-		struct syscall *cur_child = group->children[child].base;
 		for (size_t arg_idx = 0; arg_idx < cur_child->arg_count; ++arg_idx) {
 			struct syscall_argument arg = cur_child->args[arg_idx];
 
@@ -670,16 +669,16 @@ output_variant_syscall_group(struct codegen_ctx *ctx, FILE *out, struct syscall_
 			if (first) {
 				first = false;
 			} else {
-				OUTF(" &&");
+				OUTS(" &&");
 			}
 
-			char arg_str[16];
+			char arg_str[SYSCALL_ARG_STR_LEN];
 			get_syscall_arg_value(arg_str, "tcp", arg_idx);
 			OUTF("(%s) == (%s)",
 				 arg_str,
 				 resolve_type_option_to_value(cur_child, arg.type->constt.value));
 		}
-		OUTF(") {\n");
+		OUTS(") {\n");
 
 		indent_level++;
 
@@ -688,10 +687,10 @@ output_variant_syscall_group(struct codegen_ctx *ctx, FILE *out, struct syscall_
 		OUTFI("return %s(tcp);\n", func_name);
 
 		indent_level--;
-		OUTFI("}\n");
+		OUTSI("} else ");
 	}
 
-	OUTFI("else {\n");
+	OUTS("{\n");
 	indent_level++;
 
 	char func_name[VARIANT_FUNC_NAME_LEN];
@@ -699,27 +698,27 @@ output_variant_syscall_group(struct codegen_ctx *ctx, FILE *out, struct syscall_
 	OUTFI("return %s(tcp);\n", func_name);
 
 	indent_level--;
-	OUTFI("}\n");
+	OUTSI("}\n");
 
 	indent_level--;
-	OUTFI("}\n\n");
+	OUTSI("}\n\n");
 }
 
 void
-output_syscall_groups(struct codegen_ctx *ctx, FILE *out, struct syscall_group *groups,
+output_syscall_groups(FILE *out, struct syscall_group *groups,
 					  size_t group_count, bool variant)
 {
 	for (size_t i = 0; i < group_count; ++i) {
 		if (groups[i].child_count == 0) {
-			generate_decoder(ctx, out, groups[i].base, variant);
+			generate_decoder(out, groups[i].base, variant);
 			continue;
 		}
 
-		output_syscall_groups(ctx, out, groups[i].children, groups[i].child_count, true);
+		output_syscall_groups(out, groups[i].children, groups[i].child_count, true);
 
-		generate_decoder(ctx, out, groups[i].base, true);
+		generate_decoder(out, groups[i].base, true);
 
-		output_variant_syscall_group(ctx, out, &groups[i]);
+		output_variant_syscall_group(out, &groups[i]);
 	}
 }
 
@@ -739,12 +738,8 @@ generate_code(const char *in_filename, const char *out_filename, struct processe
 		 "typedef kernel_ulong_t kernel_size_t;\n\n"
 	);
 
-	struct codegen_ctx ctx = {
-		.in_filename = in_filename
-	};
-
 	output_defines(out, ast->preprocessor_stmts);
-	output_syscall_groups(&ctx, out, ast->syscall_groups, ast->syscall_group_count, false);
+	output_syscall_groups(out, ast->syscall_groups, ast->syscall_group_count, false);
 
 	fclose(out);
 
