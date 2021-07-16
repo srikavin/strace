@@ -3,8 +3,8 @@ Syscall Definitions
 
 This syscall definition language is based on the [syzkaller description language](https://github.com/google/syzkaller/blob/master/docs/syscall_descriptions.md).
 
-The ordering of non-syscall statements will be directly reflected in the generated C code.
-All syscall and ifdef/ifndef statements will be placed at the end of the generated C code with their relative ordering preserved.
+All non-syscall statements maintain their relative ordering and are placed
+before syscall statements in the generated C code.
 
 ## Syntax
 
@@ -24,7 +24,8 @@ The default types are the following:
  * `string`: A null terminated char buffer
  * `path` A null terminated path string
  * `stringnoz[n]`: A non-null terminated char buffer of length `n`
- * `const[x]`: A constant of value `x` and type `typ`
+ * `const[x]`: A constant of value `x` that inherits its parent type
+ * `const[x:y]`: A constant with a value between `x` and `y` (inclusive) that inherits its parent type
  * `ptr[dir, typ]`: A pointer to object of type `typ`; direction can be `in`, `out`, `inout`
  * `array[typ, n]`: An buffer of `n` objects with type `typ`
  * `ref[argname]`: A reference to the value of another parameter with name `argname` or `@ret`
@@ -33,20 +34,38 @@ The default types are the following:
 
  User defined types include structs, unions, and other types from included header files.
 
+Constants (`const`) can only be used within variant syscalls.
+
 ### Syscalls
 Syscall definitions have the format
 ```
-syscall_name (arg_type1 arg_name1, arg_type2, arg_name2) return_type
+syscall_name (arg_type1 arg_name1, arg_type2 arg_name2, ...) return_type
 ```
 
-The `return_type` is optional and will default to `void` if left unspecified.
+The `return_type` is optional if no special printing mode is needed.
+
+Some system calls have various modes of operations. Consider the `fcntl` syscall.
+Its second parameter determines the types of the remaining arguments. To
+handle this, a variant syscall definition can be used:
+```
+fcntl(filedes fd, cmd xor_flags[fcntl_cmds, F_???], arg kernel_ulong_t) kernel_ulong_t
+fcntl$F_DUPFD(filedes fd, cmd const[F_DUPFD], arg kernel_ulong_t) fd
+fcntl$F_DUPFD_CLOEXEC(filedes fd, cmd const[F_DUPFD_CLOEXEC], arg kernel_ulong_t) fd
+...
+```
+
+The `$` character is used to indicate that a syscall is a variant of another one.
+The `const` parameters of a variant syscall will be used to determine which
+variant to use. If no variant syscalls match, the base syscall will be used.
 
 ### Structs
 
 Struct definitions have the format
 ```
 struct_name {
-    element_name elemeet_type
+    element_name element_type
+    element_name2 element_type2
+    ...
 } [attribute]
 ```
 
@@ -94,6 +113,3 @@ include <filename>
 ```
 
 Include and define statements will be included as-is in the generated output.
-
-
-## Implementation

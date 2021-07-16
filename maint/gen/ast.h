@@ -87,6 +87,7 @@ struct ast_type {
 		} stringnoz;
 		struct {
 			struct ast_type_option *value;
+			struct ast_type *real_type;
 		} constt;
 		struct {
 			enum ptr_dir dir;
@@ -205,9 +206,6 @@ create_or_get_type_option_nested(struct ast_type *child);
 
 struct ast_type_option *
 create_type_option_range(struct ast_type_option *min, struct ast_type_option *max);
-
-void
-display_ast_tree(struct ast_node *root);
 
 void
 free_ast_tree(struct ast_node *root);

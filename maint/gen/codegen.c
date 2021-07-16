@@ -478,6 +478,15 @@ generate_printer(FILE *out, struct syscall *syscall,
 	} else if (type->type == TYPE_STRINGNOZ || strcmp(type->name, "string") == 0) {
 		log_warning("Type '%s' should be wrapped in a ptr type to indicate direction",
 					syscall->loc, type->name);
+	} else if (type->type == TYPE_CONST) {
+		if (!type->constt.real_type) {
+			log_warning("Const type (%s) has no matching parent syscall argument.", syscall->loc,
+						argname);
+			return;
+		}
+		OUTFI("/* inherited parent type (%s) */\n", type_to_ctype(type->constt.real_type));
+		generate_printer(out, syscall, argname, tcp, arg, entering,
+						 type->constt.real_type, indent_level);
 	} else {
 		log_warning("Type '%s' is currently unhandled", syscall->loc, type->name);
 		outf_indent(indent_level, out, "#error UNHANDLED TYPE: %s\n", type->name);
@@ -487,11 +496,14 @@ generate_printer(FILE *out, struct syscall *syscall,
 /*
  * Transforms a variant syscall name (like fcntl$F_DUPFD) to a valid C function
  * name (like var_fcntl_F_DUPFD).
+ *
+ * The is_leaf parameter should be set if corresponding syscall is a leaf node,
+ * i.e. has no sub syscalls.
  */
 static void
-get_variant_function_name(char out[static VARIANT_FUNC_NAME_LEN], char *variant_name)
+get_variant_function_name(char out[static VARIANT_FUNC_NAME_LEN], char *variant_name, bool is_leaf)
 {
-	snprintf(out, VARIANT_FUNC_NAME_LEN, "var_%s", variant_name);
+	snprintf(out, VARIANT_FUNC_NAME_LEN, "var_%s%s", is_leaf ? "leaf_" : "", variant_name);
 	for (int i = 0; i < VARIANT_FUNC_NAME_LEN; ++i) {
 		if (out[i] == '\0') {
 			break;
@@ -503,12 +515,48 @@ get_variant_function_name(char out[static VARIANT_FUNC_NAME_LEN], char *variant_
 }
 
 /*
+ * Output the start of any preprocessor conditions.
+ *
+ * For example:
+ * #ifdef linux
+ */
+void
+out_statement_condition_start(FILE *out, struct statement_condition *condition)
+{
+	if (condition == NULL) {
+		return;
+	}
+	for (size_t i = 0; i < condition->count; ++i) {
+		OUTF("%s\n", condition->values[i]);
+	}
+}
+
+/*
+ * Output the end of the specified preprocessor conditions.
+ *
+ * For example:
+ * #endif
+ */
+void
+out_statement_condition_end(FILE *out, struct statement_condition *condition)
+{
+	if (condition == NULL) {
+		return;
+	}
+	for (size_t i = 0; i < condition->count; ++i) {
+		OUTS("#endif\n\n");
+	}
+}
+
+/*
  * Prints out a decoder for the given system call.
  */
 static void
 generate_decoder(FILE *out, struct syscall *syscall, bool is_variant)
 {
 	int indent_level = 0;
+
+	out_statement_condition_start(out, syscall->conditions);
 
 	// determine which strategy to use depending on how many OUT ptrs there are
 	size_t out_ptrs = 0;
@@ -518,9 +566,10 @@ generate_decoder(FILE *out, struct syscall *syscall, bool is_variant)
 		}
 	}
 
+	// output function declaration
 	if (is_variant) {
 		char func_name[VARIANT_FUNC_NAME_LEN];
-		get_variant_function_name(func_name, syscall->name);
+		get_variant_function_name(func_name, syscall->name, true);
 		OUTFI("static int\n");
 		OUTFI("%s(struct tcb *tcp)\n", func_name);
 	} else {
@@ -607,30 +656,13 @@ generate_decoder(FILE *out, struct syscall *syscall, bool is_variant)
 
 	indent_level--;
 	OUTSI("}\n\n");
+
+	out_statement_condition_end(out, syscall->conditions);
 }
 
-void
-out_statement_condition_start(FILE *out, struct statement_condition *condition)
-{
-	if (condition == NULL) {
-		return;
-	}
-	for (size_t i = 0; i < condition->count; ++i) {
-		OUTF("%s\n", condition->values[i]);
-	}
-}
-
-void
-out_statement_condition_end(FILE *out, struct statement_condition *condition)
-{
-	if (condition == NULL) {
-		return;
-	}
-	for (size_t i = 0; i < condition->count; ++i) {
-		OUTS("#endif\n\n");
-	}
-}
-
+/*
+ * Write out the specified #define statements.
+ */
 void
 output_defines(FILE *out, struct preprocessor_statement_list *defines)
 {
@@ -643,16 +675,32 @@ output_defines(FILE *out, struct preprocessor_statement_list *defines)
 	}
 }
 
+/*
+ * Outputs a function which delegates to the child syscalls based on the
+ * values of the child's const-typed arguments.
+ *
+ * The is_variant flag indicates whether the group's base syscall is a child of
+ * a variant syscall itself.
+ */
 void
-output_variant_syscall_group(FILE *out, struct syscall_group *group)
+output_variant_syscall_group(FILE *out, struct syscall_group *group, bool is_variant)
 {
 	int indent_level = 0;
-	OUTFI("SYS_FUNC(%s) {\n", group->base->name);
+	if (is_variant) {
+		// variant system call
+		char func_name[VARIANT_FUNC_NAME_LEN];
+		get_variant_function_name(func_name, group->base->name, false);
+		OUTFI("static int\n%s(struct tcb *tcp) {\n", func_name);
+	} else {
+		// base system call
+		OUTFI("SYS_FUNC(%s) {\n", group->base->name);
+	}
 	indent_level++;
 
 	OUTSI("");
 	for (size_t child = 0; child < group->child_count; child++) {
-		struct syscall *cur_child = group->children[child].base;
+		struct syscall_group *cur_child_grp = &group->children[child];
+		struct syscall *cur_child = cur_child_grp->base;
 
 		out_statement_condition_start(out, cur_child->conditions);
 
@@ -669,21 +717,30 @@ output_variant_syscall_group(FILE *out, struct syscall_group *group)
 			if (first) {
 				first = false;
 			} else {
-				OUTS(" &&");
+				OUTS(" && ");
 			}
 
 			char arg_str[SYSCALL_ARG_STR_LEN];
 			get_syscall_arg_value(arg_str, "tcp", arg_idx);
-			OUTF("(%s) == (%s)",
-				 arg_str,
-				 resolve_type_option_to_value(cur_child, arg.type->constt.value));
+
+			if (arg.type->constt.value->child_type == AST_TYPE_CHILD_RANGE) {
+				OUTF("((%s) <= (%s) && (%s) <= (%s))", arg_str,
+					 resolve_type_option_to_value(cur_child, arg.type->constt.value->range.min),
+					 arg_str,
+					 resolve_type_option_to_value(cur_child, arg.type->constt.value->range.max)
+				);
+			} else {
+				OUTF("(%s) == (%s)",
+					 arg_str,
+					 resolve_type_option_to_value(cur_child, arg.type->constt.value));
+			}
 		}
 		OUTS(") {\n");
 
 		indent_level++;
 
 		char func_name[VARIANT_FUNC_NAME_LEN];
-		get_variant_function_name(func_name, cur_child->name);
+		get_variant_function_name(func_name, cur_child->name, cur_child_grp->child_count == 0);
 		OUTFI("return %s(tcp);\n", func_name);
 
 		indent_level--;
@@ -694,7 +751,7 @@ output_variant_syscall_group(FILE *out, struct syscall_group *group)
 	indent_level++;
 
 	char func_name[VARIANT_FUNC_NAME_LEN];
-	get_variant_function_name(func_name, group->base->name);
+	get_variant_function_name(func_name, group->base->name, true);
 	OUTFI("return %s(tcp);\n", func_name);
 
 	indent_level--;
@@ -704,21 +761,41 @@ output_variant_syscall_group(FILE *out, struct syscall_group *group)
 	OUTSI("}\n\n");
 }
 
+/*
+ * Outputs a syscall group and syscall variants.
+ */
 void
 output_syscall_groups(FILE *out, struct syscall_group *groups,
-					  size_t group_count, bool variant)
+					  size_t group_count, struct syscall_group *parent)
 {
 	for (size_t i = 0; i < group_count; ++i) {
+		struct syscall_group *cur = &groups[i];
+
+		if (parent) {
+			// store the real type of const parameters based on their parent
+			for (size_t j = 0; j < cur->base->arg_count && j < parent->base->arg_count; ++j) {
+				struct syscall_argument *cur_arg = &cur->base->args[j];
+				struct syscall_argument *parent_arg = &parent->base->args[j];
+				if (cur_arg->type->type == TYPE_CONST) {
+					if (parent_arg->type->type == TYPE_CONST) {
+						cur_arg->type->constt.real_type = parent_arg->type->constt.real_type;
+					} else {
+						cur_arg->type->constt.real_type = parent_arg->type;
+					}
+				}
+			}
+		}
+
 		if (groups[i].child_count == 0) {
-			generate_decoder(out, groups[i].base, variant);
+			generate_decoder(out, groups[i].base, parent != NULL);
 			continue;
 		}
 
-		output_syscall_groups(out, groups[i].children, groups[i].child_count, true);
+		output_syscall_groups(out, groups[i].children, groups[i].child_count, &groups[i]);
 
 		generate_decoder(out, groups[i].base, true);
 
-		output_variant_syscall_group(out, &groups[i]);
+		output_variant_syscall_group(out, &groups[i], parent != NULL);
 	}
 }
 
@@ -739,7 +816,7 @@ generate_code(const char *in_filename, const char *out_filename, struct processe
 	);
 
 	output_defines(out, ast->preprocessor_stmts);
-	output_syscall_groups(out, ast->syscall_groups, ast->syscall_group_count, false);
+	output_syscall_groups(out, ast->syscall_groups, ast->syscall_group_count, NULL);
 
 	fclose(out);
 

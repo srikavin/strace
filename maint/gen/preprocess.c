@@ -30,8 +30,6 @@ create_statement_condition(struct condition_stack *stack)
 		return NULL;
 	}
 	struct statement_condition *ret = xmalloc((sizeof *ret) + stack->idx * (sizeof(char *)));
-	fprintf(stderr, "size: %zu\n", stack->idx);
-	fprintf(stderr, "size: %zu\n", (sizeof *ret) + (stack->idx * (sizeof(char *))));
 	ret->count = stack->idx;
 	memcpy(ret->values, stack->stack, stack->idx * (sizeof(char *)));
 	return ret;
@@ -157,7 +155,6 @@ find_matching(struct syscall **syscall_buffer, size_t syscall_count,
 	struct syscall_group *children = xmalloc(sizeof(struct syscall_group) * matching);
 	size_t children_idx = 0;
 
-
 	size_t i = 1;
 	while (i < syscall_count) {
 		struct syscall *cur = syscall_buffer[i];
@@ -171,7 +168,6 @@ find_matching(struct syscall **syscall_buffer, size_t syscall_count,
 			i += 1;
 			continue;
 		}
-		fprintf(stderr, "%s -> %s\n", base->name, cur->name);
 		i += find_matching(syscall_buffer + i, syscall_count - i,
 						   children + children_idx);
 		children_idx++;
@@ -184,7 +180,7 @@ find_matching(struct syscall **syscall_buffer, size_t syscall_count,
 		.child_count = children_idx,
 		.children = children
 	};
-	return matching + 1;
+	return i;
 }
 
 static int

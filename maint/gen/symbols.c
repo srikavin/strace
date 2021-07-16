@@ -10,7 +10,6 @@
 
 #include "deflang.h"
 #include "symbols.h"
-#include "ast.h"
 
 #define ARRAY_LEN(x) (sizeof(x) / sizeof((x)[0]))
 
@@ -99,6 +98,7 @@ resolve_type(struct ast_type *out, char *name, struct ast_type_option_list *opti
 	} else if (strcmp(name, "const") == 0) {
 		out->type = TYPE_CONST;
 		out->constt.value = options->option;
+		out->constt.real_type = NULL;
 	} else if (strcmp(name, "ptr") == 0) {
 		out->type = TYPE_PTR;
 		if (options->option->child_type != AST_TYPE_CHILD_TYPE) {
