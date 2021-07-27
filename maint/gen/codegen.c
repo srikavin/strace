@@ -493,6 +493,25 @@ generate_printer(FILE *out, struct syscall *syscall,
 	}
 }
 
+static void
+generate_return_flags(FILE *out, struct syscall *syscall, int indent_level)
+{
+	struct ast_type ret = syscall->ret;
+	if (ret.type == TYPE_ORFLAGS) {
+		OUTFI("tcp->auxstr = sprintflags(\"%s\", %s, (kernel_ulong_t) tcp->u_rval);\n",
+			  ret.orflags.dflt, ret.orflags.flag_type->type->name);
+		OUTFI("return RVAL_STR;\n");
+	} else if (ret.type == TYPE_XORFLAGS) {
+		OUTFI("tcp->auxstr = xlookup(%s, (kernel_ulong_t) tcp->u_rval);\n",
+			  ret.xorflags.flag_type->type->name);
+		OUTFI("return RVAL_STR;\n");
+	} else {
+		char flags[SYSCALL_RET_FLAG_LEN];
+		get_sys_func_return_flags(flags, &ret, false);
+		OUTFI("return %s;\n", flags);
+	}
+}
+
 /*
  * Transforms a variant syscall name (like fcntl$F_DUPFD) to a valid C function
  * name (like var_fcntl_F_DUPFD).
@@ -581,23 +600,8 @@ generate_decoder(FILE *out, struct syscall *syscall, bool is_variant)
 	int arg_index = 0;
 	char arg_val[SYSCALL_ARG_STR_LEN];
 
-	if (out_ptrs == 0) {
-		// 0 out ptrs: print all args in sysenter
-		for (size_t i = 0; i < syscall->arg_count; i++) {
-			struct syscall_argument arg = syscall->args[i];
-			OUTFI("/* arg: %s (%s) */\n", arg.name, type_to_ctype(arg.type));
-			get_syscall_arg_value(arg_val, "tcp", arg_index++);
-
-			generate_printer(out, syscall, arg.name, "tcp", arg_val, true, arg.type,
-							 indent_level);
-
-			if (i < syscall->arg_count - 1) {
-				OUTSI("tprint_arg_next();\n");
-			}
-			OUTC('\n');
-		}
-	} else if (out_ptrs == 1) {
-		// == 1 out ptrs: print args until the out ptr in sysenter, rest in sysexit
+	if (out_ptrs <= 1) {
+		// <= 1 out ptrs: print args until the out ptr in sysenter, rest in sysexit
 		size_t cur = 0;
 
 		OUTSI("if (entering(tcp)) {\n");
@@ -619,7 +623,7 @@ generate_decoder(FILE *out, struct syscall *syscall, bool is_variant)
 			}
 		}
 
-		if (IS_INOUT_PTR(syscall->args[cur].type)) {
+		if (cur < syscall->arg_count && IS_INOUT_PTR(syscall->args[cur].type)) {
 			store_single_value(out, syscall->args[cur].type, arg_val, indent_level);
 		}
 
@@ -627,7 +631,7 @@ generate_decoder(FILE *out, struct syscall *syscall, bool is_variant)
 		indent_level--;
 		OUTSI("}\n");
 
-		if (IS_INOUT_PTR(syscall->args[cur].type)) {
+		if (cur < syscall->arg_count && IS_INOUT_PTR(syscall->args[cur].type)) {
 			// TODO: compare the current value with the previous value
 			//		 and print only if changed
 		}
@@ -650,9 +654,7 @@ generate_decoder(FILE *out, struct syscall *syscall, bool is_variant)
 		OUTSI("#error TODO\n");
 	}
 
-	char ret_flags[SYSCALL_RET_FLAG_LEN];
-	get_sys_func_return_flags(ret_flags, &syscall->ret, false);
-	OUTFI("return %s;\n", ret_flags);
+	generate_return_flags(out, syscall, indent_level);
 
 	indent_level--;
 	OUTSI("}\n\n");
