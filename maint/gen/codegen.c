@@ -20,15 +20,15 @@ struct basic_printer {
 #define BASIC_FMT(fmt) (fmt "%1$.0s" "%2$.0s")
 
 struct basic_printer basic_printers[] = {
-	// %1$s is tcp, %2$s is the argument value, %3$s is the argument index
-	{"fd", BASIC_FMT("printfd(%1$s, %2$s);"), NULL},
-	{"uid", BASIC_FMT("printuid(%2$s);"), NULL},
-	{"gid", BASIC_FMT("printuid(%2$s);"), NULL},
+	// %1$s is the argument value
+	{"fd", BASIC_FMT("printfd(tcp, %1$s);"), NULL},
+	{"uid", BASIC_FMT("printuid(%1$s);"), NULL},
+	{"gid", BASIC_FMT("printuid(%1$s);"), NULL},
 };
 
 struct basic_printer ptr_special_printers[] = {
-	{"string", BASIC_FMT("printstr(%1$s, %2$s);"), BASIC_FMT("printaddr(%2$s);")},
-	{"path", BASIC_FMT("printpath(%1$s, %2$s);"), BASIC_FMT("printaddr(%2$s);")}
+	{"string", BASIC_FMT("printstr(tcp, %1$s);"), BASIC_FMT("printaddr(%1$s);")},
+	{"path", BASIC_FMT("printpath(tcp, %1$s);"), BASIC_FMT("printaddr(%1$s);")}
 };
 
 struct {
@@ -189,18 +189,18 @@ is_unsigned_integer_typename(const char *name)
  * Stores a string referring to the i-th argument in the current syscall.
  */
 static void
-get_syscall_arg_value(char out[static SYSCALL_ARG_STR_LEN], const char *tcp, size_t i)
+get_syscall_arg_value(char out[static SYSCALL_ARG_STR_LEN], size_t i)
 {
-	snprintf(out, SYSCALL_ARG_STR_LEN, "(%s)->u_arg[%zu]", tcp, i);
+	snprintf(out, SYSCALL_ARG_STR_LEN, "tcp->u_arg[%zu]", i);
 }
 
 /*
  * Stores a string referring to the return value of the current syscall.
  */
 static void
-get_syscall_ret_value(char out[static SYSCALL_ARG_STR_LEN], const char *tcp)
+get_syscall_ret_value(char out[static SYSCALL_ARG_STR_LEN])
 {
-	snprintf(out, SYSCALL_ARG_STR_LEN, "(%s)->u_rval", tcp);
+	snprintf(out, SYSCALL_ARG_STR_LEN, "tcp->u_rval");
 }
 
 /*
@@ -301,7 +301,7 @@ resolve_type_option_to_value(struct syscall *syscall, struct ast_type_option *op
 			// syscall return value
 			if (option->type->ref.return_value) {
 				char *ret = xmalloc(SYSCALL_ARG_STR_LEN);
-				get_syscall_ret_value(ret, "tcp");
+				get_syscall_ret_value(ret);
 				return ret;
 			}
 
@@ -318,7 +318,7 @@ resolve_type_option_to_value(struct syscall *syscall, struct ast_type_option *op
 
 			if (found) {
 				char *ret = xmalloc(SYSCALL_ARG_STR_LEN);
-				get_syscall_arg_value(ret, "tcp", index);
+				get_syscall_arg_value(ret, index);
 				return ret;
 			}
 
@@ -359,44 +359,44 @@ store_single_value(FILE *out, struct ast_type *type, char *arg, int indent_level
 }
 
 static void
-generate_generic_printer(FILE *out, const char *tcp, const char *arg, bool entering,
+generate_generic_printer(FILE *out, const char *arg, bool entering,
 						 const char *standard, const char *generic, int indent_level)
 {
 	if (!entering && generic) {
-		OUTFI("if (syserror(%s)) {\n", tcp);
+		OUTFI("if (syserror(tcp)) {\n");
 		indent_level++;
 
-		OUTFI(generic, tcp, arg);
+		OUTFI(generic, arg);
 		OUTC('\n');
 		indent_level--;
 		OUTFI("} else {\n");
 		indent_level++;
-		OUTFI(standard, tcp, arg);
+		OUTFI(standard, arg);
 		OUTC('\n');
 		indent_level--;
 		OUTFI("}\n");
 	} else {
-		OUTFI(standard, tcp, arg);
+		OUTFI(standard, arg);
 		OUTC('\n');
 	}
 }
 
 static void
-generate_basic_printer(FILE *out, const char *tcp, const char *arg, bool entering,
+generate_basic_printer(FILE *out, const char *arg, bool entering,
 					   struct basic_printer printer, int indent_level)
 {
-	generate_generic_printer(out, tcp, arg, entering,
+	generate_generic_printer(out, arg, entering,
 							 printer.standard, printer.generic, indent_level);
 }
 
 static void
 generate_printer(FILE *out, struct syscall *syscall, const char *argname,
-				 const char *tcp, const char *arg, bool entering,
+				 const char *arg, bool entering,
 				 struct ast_type *type, int indent_level);
 
 static void
 generate_printer_ptr(FILE *out, struct syscall *syscall, const char *argname,
-					 const char *tcp, const char *arg, bool entering,
+					 const char *arg, bool entering,
 					 struct ast_type *type, int indent_level)
 {
 	struct ast_type *underlying = type->ptr.type;
@@ -405,21 +405,21 @@ generate_printer_ptr(FILE *out, struct syscall *syscall, const char *argname,
 	// so we need a special case to handle them
 	for (size_t i = 0; i < ARRAY_LEN(ptr_special_printers); ++i) {
 		if (strcmp(underlying->name, ptr_special_printers[i].type) == 0) {
-			generate_basic_printer(out, tcp, arg, entering, ptr_special_printers[i], indent_level);
+			generate_basic_printer(out, arg, entering, ptr_special_printers[i], indent_level);
 			return;
 		}
 	}
 
 	if (underlying->type == TYPE_STRINGNOZ) {
 		if (IS_OUT_PTR(type)) {
-			OUTFI("if (syserror(%s)) {\n", tcp);
+			OUTFI("if (syserror(tcp)) {\n");
 			OUTFI("\tprintaddr(%s);\n", arg);
 			OUTFI("} else {\n");
-			OUTFI("\tprintstrn(%s, %s, %s);\n", tcp, arg,
+			OUTFI("\tprintstrn(tcp, %s, %s);\n", arg,
 				  resolve_type_option_to_value(syscall, underlying->stringnoz.len));
 			OUTFI("}\n");
 		} else {
-			OUTFI("printstrn(%s, %s, %s);\n", tcp, arg,
+			OUTFI("printstrn(tcp, %s, %s);\n", arg,
 				  resolve_type_option_to_value(syscall, underlying->stringnoz.len));
 		}
 	} else {
@@ -429,10 +429,10 @@ generate_printer_ptr(FILE *out, struct syscall *syscall, const char *argname,
 
 		if ((IS_IN_PTR(type) && entering) || (IS_OUT_PTR(type) && !entering)) {
 			OUTFI("%s %s;\n", type_to_ctype(type->ptr.type), var_name);
-			OUTFI("if (!umove_or_printaddr(%s, %s, &%s)) {\n ",
-				  tcp, arg, var_name);
+			OUTFI("if (!umove_or_printaddr(tcp, %s, &%s)) {\n ",
+				  arg, var_name);
 
-			generate_printer(out, syscall, argname, tcp, var_name, entering,
+			generate_printer(out, syscall, argname, var_name, entering,
 							 type->ptr.type, indent_level + 1);
 
 			OUTSI("}\n");
@@ -445,7 +445,7 @@ generate_printer_ptr(FILE *out, struct syscall *syscall, const char *argname,
  */
 static void
 generate_printer(FILE *out, struct syscall *syscall,
-				 const char *argname, const char *tcp, const char *arg, bool entering,
+				 const char *argname, const char *arg, bool entering,
 				 struct ast_type *type, int indent_level)
 {
 	if (type->type == TYPE_BASIC) {
@@ -460,7 +460,7 @@ generate_printer(FILE *out, struct syscall *syscall,
 		for (size_t i = 0; i < ARRAY_LEN(basic_printers); ++i) {
 			if (strcmp(type->name, basic_printers[i].type) == 0) {
 				struct basic_printer cur = basic_printers[i];
-				generate_basic_printer(out, tcp, arg, entering, cur, indent_level);
+				generate_basic_printer(out, arg, entering, cur, indent_level);
 				return;
 			}
 		}
@@ -468,7 +468,7 @@ generate_printer(FILE *out, struct syscall *syscall,
 		log_warning("No known printer for basic type %s", syscall->loc, type->name);
 		outf_indent(indent_level, out, "#error UNHANDLED BASIC TYPE: %s\n", type->name);
 	} else if (type->type == TYPE_PTR) {
-		generate_printer_ptr(out, syscall, argname, tcp, arg, entering, type, indent_level);
+		generate_printer_ptr(out, syscall, argname, arg, entering, type, indent_level);
 	} else if (type->type == TYPE_ORFLAGS) {
 		OUTFI("printflags(%s, %s, \"%s\");\n", type->orflags.flag_type->type->name, arg,
 			  type->orflags.dflt);
@@ -485,7 +485,7 @@ generate_printer(FILE *out, struct syscall *syscall,
 			return;
 		}
 		OUTFI("/* inherited parent type (%s) */\n", type_to_ctype(type->constt.real_type));
-		generate_printer(out, syscall, argname, tcp, arg, entering,
+		generate_printer(out, syscall, argname, arg, entering,
 						 type->constt.real_type, indent_level);
 	} else {
 		log_warning("Type '%s' is currently unhandled", syscall->loc, type->name);
@@ -613,9 +613,9 @@ generate_decoder(FILE *out, struct syscall *syscall, bool is_variant)
 			}
 
 			OUTFI("/* arg: %s (%s) */\n", arg.name, type_to_ctype(arg.type));
-			get_syscall_arg_value(arg_val, "tcp", arg_index++);
+			get_syscall_arg_value(arg_val, arg_index++);
 
-			generate_printer(out, syscall, arg.name, "tcp", arg_val, true, arg.type,
+			generate_printer(out, syscall, arg.name, arg_val, true, arg.type,
 							 indent_level);
 
 			if (cur < syscall->arg_count - 1) {
@@ -639,9 +639,9 @@ generate_decoder(FILE *out, struct syscall *syscall, bool is_variant)
 		for (; cur < syscall->arg_count; ++cur) {
 			struct syscall_argument arg = syscall->args[cur];
 			OUTFI("/* arg: %s (%s) */\n", arg.name, type_to_ctype(arg.type));
-			get_syscall_arg_value(arg_val, "tcp", arg_index++);
+			get_syscall_arg_value(arg_val, arg_index++);
 
-			generate_printer(out, syscall, arg.name, "tcp", arg_val, false, arg.type,
+			generate_printer(out, syscall, arg.name, arg_val, false, arg.type,
 							 indent_level);
 
 			if (cur < syscall->arg_count - 1) {
@@ -723,7 +723,7 @@ output_variant_syscall_group(FILE *out, struct syscall_group *group, bool is_var
 			}
 
 			char arg_str[SYSCALL_ARG_STR_LEN];
-			get_syscall_arg_value(arg_str, "tcp", arg_idx);
+			get_syscall_arg_value(arg_str, arg_idx);
 
 			if (arg.type->constt.value->child_type == AST_TYPE_CHILD_RANGE) {
 				OUTF("((%s) <= (%s) && (%s) <= (%s))", arg_str,
