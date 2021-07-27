@@ -1,0 +1,19 @@
+:fd %{ printfd(tcp, $$); %}
+:uid %{ printuid($$); %}
+:gid %{ printuid($$); %}
+
+:path %{
+	if (syserror(tcp)) {
+    	printpath($$);
+    } else {
+    	printstr(tcp, $$);
+    }
+%}
+
+:string %{
+	if (syserror(tcp)) {
+		printaddr($$);
+	} else {
+		printstr(tcp, $$);
+	}
+%}

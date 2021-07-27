@@ -1,11 +1,18 @@
-include <uapi/linux/btrfs.h>
+#import "defs/common.syzlang"
 
-// define ioctl variants for each cmd
-ioctl$BTRFS_IOC_SNAP_CREATE(fd fd, cmd const[BTRFS_IOC_SNAP_CREATE], arg ptr[in, btrfs_ioctl_vol_args])
+include <fcntl.h>
 
-ioctl$BTRFS_IOC_SUBVOL_CREATE(fd fd, cmd const[BTRFS_IOC_SUBVOL_CREATE], arg ptr[in, btrfs_ioctl_vol_args])
+:ptr[in, bind_sockaddr]	 %{ decode_sockaddr(tcp, $$, (int) tcp->u_arg[1]); %}
 
-btrfs_ioctl_vol_args {
-	fd      fd
-	name    stringnoz[BTRFS_PATH_MAX]
-}
+bind(sockfd fd, addr ptr[in, bind_sockaddr], addrlen int)
+
+fcntl(filedes fd, cmd xor_flags[fcntl_cmds, F_???], arg string) kernel_ulong_t
+
+fcntl$F_DUPFD(filedes fd, cmd const[F_DUPFD], arg kernel_ulong_t) fd
+fcntl$F_DUPFD_CLOEXEC(filedes fd, cmd const[F_DUPFD_CLOEXEC], arg kernel_ulong_t) fd
+
+prctl(option xor_flags[prctl_options, PR_???], arg2 kernel_ulong_t, arg3 kernel_ulong_t, arg4 kernel_ulong_t, arg5 kernel_ulong_t)
+
+prctl$PR_GET_KEEPCAPS(option const[PR_GET_KEEPCAPS], arg2 kernel_ulong_t, arg3 kernel_ulong_t, arg4 kernel_ulong_t, arg5 kernel_ulong_t) kernel_ulong_t
+prctl$PR_GET_SECCOMP(option const[PR_GET_SECCOMP], arg2 kernel_ulong_t, arg3 kernel_ulong_t, arg4 kernel_ulong_t, arg5 kernel_ulong_t) kernel_ulong_t
+prctl$PR_GET_TIMERSLACK(option const[PR_GET_TIMERSLACK], arg2 kernel_ulong_t, arg3 kernel_ulong_t, arg4 kernel_ulong_t, arg5 kernel_ulong_t) kernel_ulong_t

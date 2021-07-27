@@ -89,6 +89,13 @@ int last_line_location;
 	return T_IDENTIFIER;
 }
 
+(?x: "%{" ( [^%] | %+ [^}] )* %* "%}" ) {
+	yylval.str = strdup(yytext + 2);
+	yylval.str[strlen(yylval.str) - 2] ='\0';
+
+	return T_DECODER_SOURCE;
+}
+
 "define".+ {
 	yylval.str = strdup(yytext);
 	return T_DEFINE;

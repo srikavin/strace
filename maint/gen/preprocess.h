@@ -46,6 +46,24 @@ struct syscall_argument {
 	struct ast_type *type;
 };
 
+struct decoder {
+	struct ast_loc loc;
+
+	// the type this decoder handles
+	struct ast_type *matching_type;
+
+	// a format string containing C source code of a decoder capable of handling
+	// arguments/return values of type 'matching_type'.
+	// the first printf arg is a variable containing the value of the argument.
+	// the second printf arg is the index of the argument.
+	char *fmt_string;
+};
+
+struct decoder_list {
+	struct decoder decoder;
+	struct decoder_list *next;
+};
+
 struct syscall {
 	struct ast_loc loc;
 
@@ -78,6 +96,7 @@ struct syscall_group {
 
 struct processed_ast {
 	struct preprocessor_statement_list *preprocessor_stmts;
+	struct decoder_list *decoders;
 	struct struct_def *struct_stmts;
 	size_t syscall_group_count;
 	struct syscall_group *syscall_groups;

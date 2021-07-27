@@ -52,8 +52,9 @@ static void error_prev_decl(char *identifier, struct ast_node *prev);
 %token <str> INCLUDE "include"
 %token <str> IDENTIFIER;
 %token <number> NUMBER;
+%token <str> DECODER_SOURCE
 
-%type <node> compound compound_stmt statement define ifdef ifndef include syscall struct flags
+%type <node> compound compound_stmt statement decoder define ifdef ifndef include syscall struct flags
 %type <type> type syscall_return_type
 %type <type_option_list> type_options
 %type <type_option> type_option type_option_range
@@ -107,6 +108,14 @@ statement: define
 	| syscall
 	| struct
 	| flags
+	| decoder
+
+decoder: ":" type DECODER_SOURCE
+		{
+			$$ = create_ast_node(AST_DECODER, &@$);
+			$$->decoder.type = $2;
+			$$->decoder.decoder = $3;
+		}
 
 syscall: IDENTIFIER "(" syscall_arglist ")" syscall_return_type syscall_attribute
 		{
@@ -311,6 +320,10 @@ void
 yyerror (const char* fmt, ...)
 {
 	char buffer[257] = {0};
+
+	if (yyin == NULL) {
+		return;
+	}
 
 	long int saved = ftell(yyin);
 	fseek(yyin, last_line_location, SEEK_SET);

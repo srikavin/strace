@@ -43,6 +43,7 @@ create_ast_node(enum ast_node_type type, void *loc)
 		.loc = {
 			.lineno = ((YYLTYPE *) loc)->first_line,
 			.colno = ((YYLTYPE *) loc)->first_column,
+			.file = strdup(cur_filename)
 		},
 		.next = NULL
 	};
@@ -146,6 +147,12 @@ compare_type_option_list(struct ast_type_option_list *a, struct ast_type_option_
 	}
 
 	return true;
+}
+
+bool
+ast_type_equal(struct ast_type *a, struct ast_type *b)
+{
+	return strcmp(a->name, b->name) == 0 && compare_type_option_list(a->options, b->options);
 }
 
 struct ast_type *

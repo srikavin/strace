@@ -7,6 +7,7 @@
 #include "ast.h"
 #include "deflang.h"
 #include "symbols.h"
+#include "printf.h"
 
 #define MAX_PREPROCESSOR_NEST 16
 #define MAX_SYSCALL_COUNT 4096
@@ -39,10 +40,59 @@ create_statement_condition(struct condition_stack *stack)
 struct processing_state {
 	struct preprocessor_statement_list *preprocessor_head;
 	struct preprocessor_statement_list *preprocessor_tail;
+	struct decoder_list *decoder_head;
 	struct struct_def *struct_stmts;
 	struct syscall **syscall_buffer;
 	size_t syscall_index;
 };
+
+static void
+string_replace(char *out, const char *in, const char *find, const char *replace)
+{
+	size_t find_len = strlen(find);
+	size_t replace_len = strlen(replace);
+
+	char *out_pos = out;
+	const char *in_pos = in;
+
+	while (true) {
+		const char *target = strstr(in_pos, find);
+
+		if (target == NULL) {
+			strcpy(out_pos, in_pos);
+			return;
+		}
+
+		memcpy(out_pos, in_pos, target - in_pos);
+		out_pos += target - in_pos;
+
+		memcpy(out_pos, replace, replace_len);
+		out_pos += replace_len;
+
+		in_pos = target + find_len;
+	}
+}
+
+static void
+preprocess_decoder(struct decoder *decoder)
+{
+	char *out1 = xcalloc(strlen(decoder->fmt_string) * 2);
+	string_replace(out1, decoder->fmt_string, "$$", "%1$s");
+
+	char *out2 = xcalloc(strlen(decoder->fmt_string) * 2 + 12);
+	string_replace(out2, out1, "$@", "%2$s");
+
+	/*
+ 	* This is necessary since positional fmt arguments can't skip indices. This macro
+ 	* ensures that all arguments' types are specified without affecting the output.
+ 	*/
+	strncat(out2, "%1$.0s" "%2$.0s", strlen(out1) * 2);
+
+	free(decoder->fmt_string);
+	free(out1);
+
+	decoder->fmt_string = out2;
+}
 
 /*
  * Splits the AST into preprocessor definitions, struct definitions, and
@@ -60,6 +110,19 @@ preprocess_rec(struct ast_node *root, struct condition_stack *cur,
 		preprocess_rec(root->ifdef.child, cur, state);
 		cur->idx--;
 		cur->stack[cur->idx] = NULL;
+	} else if (root->type == AST_DECODER) {
+		struct decoder_list *decoder = xmalloc(sizeof *decoder);
+		*decoder = (struct decoder_list) {
+			.decoder = {
+				.loc = root->loc,
+				.matching_type = root->decoder.type,
+				.fmt_string = root->decoder.decoder
+			},
+			.next = state->decoder_head
+		};
+		state->decoder_head = decoder;
+
+		preprocess_decoder(&decoder->decoder);
 	} else if (root->type == AST_DEFINE || root->type == AST_INCLUDE) {
 		struct statement_condition *conditions = create_statement_condition(cur);
 		struct preprocessor_statement_list *new = xmalloc(sizeof *new);
@@ -235,7 +298,8 @@ preprocess(struct ast_node *root)
 		.syscall_index = 0,
 		.struct_stmts = NULL,
 		.preprocessor_head = NULL,
-		.preprocessor_tail = NULL
+		.preprocessor_tail = NULL,
+		.decoder_head = NULL
 	};
 
 	struct condition_stack conditions = {.idx = 0, .stack = {0}};
@@ -244,6 +308,7 @@ preprocess(struct ast_node *root)
 	ret->preprocessor_stmts = state.preprocessor_head;
 	ret->struct_stmts = state.struct_stmts;
 	ret->syscall_groups = group_syscall_variants(&state, &ret->syscall_group_count);
+	ret->decoders = state.decoder_head;
 
 	return ret;
 }

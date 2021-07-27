@@ -7,30 +7,6 @@
 #include "deflang.h"
 #include "symbols.h"
 
-struct basic_printer {
-	char *type;
-	char *standard;
-	char *generic;
-};
-
-/*
- * This is necessary since positional fmt arguments can't skip indices. This macro
- * ensures that all arguments' types are specified without affecting the output.
- */
-#define BASIC_FMT(fmt) (fmt "%1$.0s" "%2$.0s")
-
-struct basic_printer basic_printers[] = {
-	// %1$s is the argument value
-	{"fd", BASIC_FMT("printfd(tcp, %1$s);"), NULL},
-	{"uid", BASIC_FMT("printuid(%1$s);"), NULL},
-	{"gid", BASIC_FMT("printuid(%1$s);"), NULL},
-};
-
-struct basic_printer ptr_special_printers[] = {
-	{"string", BASIC_FMT("printstr(tcp, %1$s);"), BASIC_FMT("printaddr(%1$s);")},
-	{"path", BASIC_FMT("printpath(tcp, %1$s);"), BASIC_FMT("printaddr(%1$s);")}
-};
-
 struct {
 	char *name;
 	char *ctype;
@@ -69,6 +45,8 @@ char *unsigned_int_types[] = {
 	"size_t",
 	"size"
 };
+
+static struct decoder_list *decoders = NULL;
 
 #define VARIANT_FUNC_NAME_LEN 64
 #define SYSCALL_RET_FLAG_LEN 64
@@ -359,37 +337,6 @@ store_single_value(FILE *out, struct ast_type *type, char *arg, int indent_level
 }
 
 static void
-generate_generic_printer(FILE *out, const char *arg, bool entering,
-						 const char *standard, const char *generic, int indent_level)
-{
-	if (!entering && generic) {
-		OUTFI("if (syserror(tcp)) {\n");
-		indent_level++;
-
-		OUTFI(generic, arg);
-		OUTC('\n');
-		indent_level--;
-		OUTFI("} else {\n");
-		indent_level++;
-		OUTFI(standard, arg);
-		OUTC('\n');
-		indent_level--;
-		OUTFI("}\n");
-	} else {
-		OUTFI(standard, arg);
-		OUTC('\n');
-	}
-}
-
-static void
-generate_basic_printer(FILE *out, const char *arg, bool entering,
-					   struct basic_printer printer, int indent_level)
-{
-	generate_generic_printer(out, arg, entering,
-							 printer.standard, printer.generic, indent_level);
-}
-
-static void
 generate_printer(FILE *out, struct syscall *syscall, const char *argname,
 				 const char *arg, bool entering,
 				 struct ast_type *type, int indent_level);
@@ -403,12 +350,7 @@ generate_printer_ptr(FILE *out, struct syscall *syscall, const char *argname,
 
 	// strings and arrays are already pointer types in C,
 	// so we need a special case to handle them
-	for (size_t i = 0; i < ARRAY_LEN(ptr_special_printers); ++i) {
-		if (strcmp(underlying->name, ptr_special_printers[i].type) == 0) {
-			generate_basic_printer(out, arg, entering, ptr_special_printers[i], indent_level);
-			return;
-		}
-	}
+	// TODO:
 
 	if (underlying->type == TYPE_STRINGNOZ) {
 		if (IS_OUT_PTR(type)) {
@@ -448,6 +390,16 @@ generate_printer(FILE *out, struct syscall *syscall,
 				 const char *argname, const char *arg, bool entering,
 				 struct ast_type *type, int indent_level)
 {
+	for (struct decoder_list *cur = decoders; cur != NULL; cur = cur->next) {
+		if (ast_type_equal(cur->decoder.matching_type, type)) {
+			OUTFI("/* using decoder from %s:%d:%d */\n", cur->decoder.loc.file,
+				  cur->decoder.loc.lineno, cur->decoder.loc.colno);
+			OUTFI(cur->decoder.fmt_string, arg);
+			OUTSI("\n");
+			return;
+		}
+	}
+
 	if (type->type == TYPE_BASIC) {
 		if (is_signed_integer_typename(type->name)) {
 			OUTFI("PRINT_VAL_D((%s) %s);\n", type_to_ctype(type), arg);
@@ -455,14 +407,6 @@ generate_printer(FILE *out, struct syscall *syscall,
 		} else if (is_unsigned_integer_typename(type->name)) {
 			OUTFI("PRINT_VAL_U((%s) %s);\n", type_to_ctype(type), arg);
 			return;
-		}
-
-		for (size_t i = 0; i < ARRAY_LEN(basic_printers); ++i) {
-			if (strcmp(type->name, basic_printers[i].type) == 0) {
-				struct basic_printer cur = basic_printers[i];
-				generate_basic_printer(out, arg, entering, cur, indent_level);
-				return;
-			}
 		}
 
 		log_warning("No known printer for basic type %s", syscall->loc, type->name);
@@ -600,8 +544,23 @@ generate_decoder(FILE *out, struct syscall *syscall, bool is_variant)
 	int arg_index = 0;
 	char arg_val[SYSCALL_ARG_STR_LEN];
 
-	if (out_ptrs <= 1) {
-		// <= 1 out ptrs: print args until the out ptr in sysenter, rest in sysexit
+	if (out_ptrs == 0) {
+		// 0 out ptrs: print all args in sysenter
+		for (size_t i = 0; i < syscall->arg_count; i++) {
+			struct syscall_argument arg = syscall->args[i];
+			OUTFI("/* arg: %s (%s) */\n", arg.name, type_to_ctype(arg.type));
+			get_syscall_arg_value(arg_val, arg_index++);
+
+			generate_printer(out, syscall, arg.name, arg_val, true, arg.type,
+							 indent_level);
+
+			if (i < syscall->arg_count - 1) {
+				OUTSI("tprint_arg_next();\n");
+			}
+			OUTC('\n');
+		}
+	} else if (out_ptrs == 1) {
+		// == 1 out ptrs: print args until the out ptr in sysenter, rest in sysexit
 		size_t cur = 0;
 
 		OUTSI("if (entering(tcp)) {\n");
@@ -816,6 +775,8 @@ generate_code(const char *in_filename, const char *out_filename, struct processe
 		 "#include \"defs.h\"\n\n"
 		 "typedef kernel_ulong_t kernel_size_t;\n\n"
 	);
+
+	decoders = ast->decoders;
 
 	output_defines(out, ast->preprocessor_stmts);
 	output_syscall_groups(out, ast->syscall_groups, ast->syscall_group_count, NULL);

@@ -16,6 +16,7 @@ enum ast_node_type {
 	AST_INCLUDE,
 	AST_COMPOUND,
 	AST_STRUCT,
+	AST_DECODER,
 	AST_FLAGS
 };
 
@@ -142,6 +143,7 @@ struct ast_flag_values {
 };
 
 struct ast_loc {
+	char *file;
 	int lineno;
 	int colno;
 };
@@ -174,6 +176,10 @@ struct ast_node {
 			char *name;
 			struct ast_flag_values *values;
 		} flags;
+		struct {
+			struct ast_type *type;
+			char *decoder;
+		} decoder;
 	};
 };
 
@@ -191,6 +197,10 @@ create_ast_syscall_arg(char *name, struct ast_type *type, struct ast_syscall_arg
 
 struct ast_flag_values *
 create_ast_flag_values(char *name, struct ast_flag_values *next);
+
+// returns true if two types are equal; false otherwise
+bool
+ast_type_equal(struct ast_type *a, struct ast_type *b);
 
 /*
  * On error, returns NULL and sets an error string to error.
