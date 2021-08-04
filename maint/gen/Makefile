@@ -1,4 +1,4 @@
-CFLAGS += -ggdb -std=gnu99 -Wall -Wextra -fsanitize=address
+CFLAGS += -ggdb -std=gnu99 -Wall -Wextra
 
 all: gen
 

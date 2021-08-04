@@ -1,4 +1,6 @@
 #include <assert.h>
+#include <ctype.h>
+#include <inttypes.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -262,12 +264,13 @@ get_sys_func_return_flags(char out[static SYSCALL_RET_FLAG_LEN], struct ast_type
  * and const[ref[argname]] is resolved to tcp->u_arg[2]
  * (where argname is the name of the 3rd syscall argument).
  *
- * The specified type option MUST NOT be a range.
+ * The specified type option MUST NOT be a range or a template id.
  */
 static char *
 resolve_type_option_to_value(struct syscall *syscall, struct ast_type_option *option)
 {
-	assert(option->type != AST_TYPE_CHILD_RANGE);
+	assert(option->child_type != AST_TYPE_CHILD_RANGE &&
+		   option->child_type != AST_TYPE_CHILD_TEMPLATE_ID);
 
 	if (option->child_type == AST_TYPE_CHILD_NUMBER) {
 		// return the number exactly as specified in the source file
@@ -348,36 +351,131 @@ generate_printer_ptr(FILE *out, struct syscall *syscall, const char *argname,
 {
 	struct ast_type *underlying = type->ptr.type;
 
-	// strings and arrays are already pointer types in C,
-	// so we need a special case to handle them
-	// TODO:
+	// copy from target memory and use decoder for resulting value
+	char var_name[32];
+	snprintf(var_name, 32, "tmpvar_%s", argname);
 
-	if (underlying->type == TYPE_STRINGNOZ) {
-		if (IS_OUT_PTR(type)) {
-			OUTFI("if (syserror(tcp)) {\n");
-			OUTFI("\tprintaddr(%s);\n", arg);
-			OUTFI("} else {\n");
-			OUTFI("\tprintstrn(tcp, %s, %s);\n", arg,
-				  resolve_type_option_to_value(syscall, underlying->stringnoz.len));
-			OUTFI("}\n");
-		} else {
-			OUTFI("printstrn(tcp, %s, %s);\n", arg,
-				  resolve_type_option_to_value(syscall, underlying->stringnoz.len));
+	if ((IS_IN_PTR(type) && entering) || (IS_OUT_PTR(type) && !entering)) {
+		OUTFI("%s %s;\n", type_to_ctype(type->ptr.type), var_name);
+		OUTFI("if (!umove_or_printaddr(tcp, %s, &%s)) {\n ",
+			  arg, var_name);
+
+		generate_printer(out, syscall, argname, var_name, entering,
+						 type->ptr.type, indent_level + 1);
+
+		OUTSI("}\n");
+	}
+}
+
+static void
+generate_templated_printer(FILE *out, struct syscall *syscall,
+						   const char *arg, struct ast_type *arg_type,
+						   struct decoder templated_decoder)
+{
+	struct {
+		char *value;
+		intmax_t template_id;
+	} substitutions[256];
+	int subs_pos = 0;
+
+	// Do a DFS over the template type to find substitution markers
+	struct dfs_stack_entry {
+		struct ast_type *template;
+		struct ast_type *actual;
+	};
+
+	struct dfs_stack_entry dfs_stack[128] = {0};
+	int stack_ptr = 0;
+
+	dfs_stack[stack_ptr] = (struct dfs_stack_entry) {
+		.template = templated_decoder.matching_type,
+		.actual = arg_type
+	};
+	stack_ptr++;
+
+	while (stack_ptr != 0) {
+		stack_ptr--;
+		struct dfs_stack_entry entry = dfs_stack[stack_ptr];
+
+		if (entry.actual == NULL || entry.template == NULL) {
+			continue;
 		}
-	} else {
-		// copy from target memory and use decoder for resulting value
-		char var_name[32];
-		snprintf(var_name, 32, "tmpvar_%s", argname);
 
-		if ((IS_IN_PTR(type) && entering) || (IS_OUT_PTR(type) && !entering)) {
-			OUTFI("%s %s;\n", type_to_ctype(type->ptr.type), var_name);
-			OUTFI("if (!umove_or_printaddr(tcp, %s, &%s)) {\n ",
-				  arg, var_name);
+		if (strcmp(entry.actual->name, entry.template->name) != 0) {
+			continue;
+		}
 
-			generate_printer(out, syscall, argname, var_name, entering,
-							 type->ptr.type, indent_level + 1);
+		struct ast_type_option_list *template_option = entry.template->options;
+		struct ast_type_option_list *actual_option = entry.actual->options;
+		for (; actual_option != NULL && template_option != NULL;
+			   actual_option = actual_option->next, template_option = template_option->next) {
+			if (template_option->option->child_type == AST_TYPE_CHILD_TEMPLATE_ID) {
+				substitutions[subs_pos].value = resolve_type_option_to_value(syscall,
+																			 actual_option->option);
+				substitutions[subs_pos].template_id = template_option->option->template.id;
+				subs_pos++;
+			}
 
-			OUTSI("}\n");
+			if (actual_option->option->child_type != template_option->option->child_type) {
+				break;
+			}
+
+			if (template_option->option->child_type == AST_TYPE_CHILD_TYPE) {
+				dfs_stack[stack_ptr] = (struct dfs_stack_entry) {
+					.template = template_option->option->type,
+					.actual = actual_option->option->type
+				};
+				stack_ptr++;
+			}
+		}
+	}
+
+	// Output the template string and replace substitution markers with real values
+	const char *template = templated_decoder.fmt_string;
+	size_t template_len = strlen(template);
+
+	intmax_t cur = 0;
+	bool in_template_number = false;
+	for (size_t i = 0; i < template_len; ++i) {
+		if (template[i] == '$' && (i + 1 < template_len && template[i + 1] == '$')) {
+			OUTF("(%s)", arg);
+			i++;
+			continue;
+		}
+
+		if (template[i] == '$' && (i + 1 < template_len && isdigit(template[i + 1]))) {
+			in_template_number = true;
+			continue;
+		}
+
+		if (!in_template_number) {
+			OUTC(template[i]);
+			continue;
+		}
+
+		if (in_template_number && isdigit(template[i])) {
+			cur = cur * 10 + (template[i] - '0');
+		}
+
+		if (in_template_number && (!isdigit(template[i]) || i == in_template_number - 1)) {
+			in_template_number = false;
+
+			int found = -1;
+			// find matching substitution
+			for (int j = 0; j < subs_pos; ++j) {
+				if (substitutions[j].template_id == cur) {
+					found = j;
+					break;
+				}
+			}
+
+			if (found == -1) {
+				log_warning("Template variable $%" PRIdMAX " could not be resolved!",
+							syscall->loc, cur);
+				continue;
+			}
+
+			OUTF("(%s)", substitutions[found].value);
 		}
 	}
 }
@@ -391,10 +489,10 @@ generate_printer(FILE *out, struct syscall *syscall,
 				 struct ast_type *type, int indent_level)
 {
 	for (struct decoder_list *cur = decoders; cur != NULL; cur = cur->next) {
-		if (ast_type_equal(cur->decoder.matching_type, type)) {
+		if (ast_type_matching(cur->decoder.matching_type, type)) {
 			OUTFI("/* using decoder from %s:%d:%d */\n", cur->decoder.loc.file,
 				  cur->decoder.loc.lineno, cur->decoder.loc.colno);
-			OUTFI(cur->decoder.fmt_string, arg);
+			generate_templated_printer(out, syscall, arg, type, cur->decoder);
 			OUTSI("\n");
 			return;
 		}

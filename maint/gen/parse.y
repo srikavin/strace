@@ -50,8 +50,9 @@ static void error_prev_decl(char *identifier, struct ast_node *prev);
 %token ENDIF "#endif"
 %token <str> IFNDEF "#ifndef"
 %token <str> INCLUDE "include"
-%token <str> IDENTIFIER;
-%token <number> NUMBER;
+%token <str> IDENTIFIER
+%token <number> TEMPLATE_IDENTIFIER
+%token <number> NUMBER
 %token <str> DECODER_SOURCE
 
 %type <node> compound compound_stmt statement decoder define ifdef ifndef include syscall struct flags
@@ -219,6 +220,10 @@ type_option: type
 	| NUMBER
 		{
 			$$ = create_or_get_type_option_number($1);
+		}
+	| TEMPLATE_IDENTIFIER
+		{
+			$$ = create_type_template_identifier($1);
 		}
 
 define: DEFINE

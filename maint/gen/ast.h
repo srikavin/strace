@@ -122,7 +122,8 @@ struct ast_type_option_list {
 enum ast_type_option_child {
 	AST_TYPE_CHILD_RANGE,
 	AST_TYPE_CHILD_NUMBER,
-	AST_TYPE_CHILD_TYPE
+	AST_TYPE_CHILD_TYPE,
+	AST_TYPE_CHILD_TEMPLATE_ID
 };
 
 struct ast_type_option {
@@ -134,6 +135,9 @@ struct ast_type_option {
 			struct ast_type_option *min;
 			struct ast_type_option *max;
 		} range;
+		struct {
+			intmax_t id;
+		} template;
 	};
 };
 
@@ -200,7 +204,7 @@ create_ast_flag_values(char *name, struct ast_flag_values *next);
 
 // returns true if two types are equal; false otherwise
 bool
-ast_type_equal(struct ast_type *a, struct ast_type *b);
+ast_type_matching(struct ast_type *a, struct ast_type *b);
 
 /*
  * On error, returns NULL and sets an error string to error.
@@ -216,6 +220,9 @@ create_or_get_type_option_nested(struct ast_type *child);
 
 struct ast_type_option *
 create_type_option_range(struct ast_type_option *min, struct ast_type_option *max);
+
+struct ast_type_option *
+create_type_template_identifier(struct ast_number number);
 
 void
 free_ast_tree(struct ast_node *root);

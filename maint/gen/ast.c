@@ -111,13 +111,25 @@ struct known_type_option {
 static struct known_type_option *known_type_options = NULL;
 
 static bool
-compare_type_option_list(struct ast_type_option_list *a, struct ast_type_option_list *b)
+compare_type_option_list(struct ast_type_option_list *a, struct ast_type_option_list *b,
+						 bool match_templates)
 {
 	struct ast_type_option_list *cur_a = a;
 	struct ast_type_option_list *cur_b = b;
 
 	while (cur_a != NULL) {
 		if (cur_b == NULL) {
+			return false;
+		}
+
+		if (cur_a->option->child_type == AST_TYPE_CHILD_TEMPLATE_ID ||
+			cur_b->option->child_type == AST_TYPE_CHILD_TEMPLATE_ID) {
+			if (match_templates) {
+				// templates are able to match all other type options
+				cur_a = cur_a->next;
+				cur_b = cur_b->next;
+				continue;
+			}
 			return false;
 		}
 
@@ -130,13 +142,10 @@ compare_type_option_list(struct ast_type_option_list *a, struct ast_type_option_
 			return false;
 		}
 
-		// take advantage of the fact that all types are allocated by
-		// create_or_get_type so equal types will have the same address
 		if (cur_a->option->child_type == AST_TYPE_CHILD_TYPE &&
-			(cur_a->option->type != cur_b->option->type)) {
+			(!ast_type_matching(cur_a->option->type, cur_b->option->type))) {
 			return false;
 		}
-
 
 		cur_a = cur_a->next;
 		cur_b = cur_b->next;
@@ -150,9 +159,9 @@ compare_type_option_list(struct ast_type_option_list *a, struct ast_type_option_
 }
 
 bool
-ast_type_equal(struct ast_type *a, struct ast_type *b)
+ast_type_matching(struct ast_type *a, struct ast_type *b)
 {
-	return strcmp(a->name, b->name) == 0 && compare_type_option_list(a->options, b->options);
+	return strcmp(a->name, b->name) == 0 && compare_type_option_list(a->options, b->options, true);
 }
 
 struct ast_type *
@@ -161,7 +170,7 @@ create_or_get_type(char **error, char *name, struct ast_type_option_list *option
 	// check if we've seen this type before
 	for (struct known_type *cur = known_types; cur != NULL; cur = cur->next) {
 		if (strcmp(cur->type.name, name) == 0 &&
-			compare_type_option_list(cur->type.options, options)) {
+			compare_type_option_list(cur->type.options, options, false)) {
 			return &cur->type;
 		}
 	}
@@ -210,6 +219,20 @@ create_or_get_type_option_number(struct ast_number number)
 	known_type_options = option;
 
 	return &option->type_option;
+}
+
+struct ast_type_option *
+create_type_template_identifier(struct ast_number number)
+{
+	struct ast_type_option *option = xmalloc(sizeof *option);
+	*option = (struct ast_type_option) {
+		.child_type = AST_TYPE_CHILD_TEMPLATE_ID,
+		.template = {
+			.id = number.val
+		}
+	};
+
+	return option;
 }
 
 struct ast_type_option *

@@ -2,11 +2,23 @@
 :uid %{ printuid($$); %}
 :gid %{ printuid($$); %}
 
+:ptr[$9, stringnoz[$1]] %{
+	if (entering(tcp)) {
+		printstrn(tcp, $$, $1);
+	} else {
+		if (syserror(tcp)) {
+			printaddr($$);
+		} else {
+			printstrn(tcp, $$, $1);
+		}
+	}
+%}
+
 :path %{
 	if (syserror(tcp)) {
-    	printpath($$);
+		printpath($$);
     } else {
-    	printstr(tcp, $$);
+		printstr(tcp, $$);
     }
 %}
 

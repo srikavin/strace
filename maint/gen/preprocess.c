@@ -46,54 +46,6 @@ struct processing_state {
 	size_t syscall_index;
 };
 
-static void
-string_replace(char *out, const char *in, const char *find, const char *replace)
-{
-	size_t find_len = strlen(find);
-	size_t replace_len = strlen(replace);
-
-	char *out_pos = out;
-	const char *in_pos = in;
-
-	while (true) {
-		const char *target = strstr(in_pos, find);
-
-		if (target == NULL) {
-			strcpy(out_pos, in_pos);
-			return;
-		}
-
-		memcpy(out_pos, in_pos, target - in_pos);
-		out_pos += target - in_pos;
-
-		memcpy(out_pos, replace, replace_len);
-		out_pos += replace_len;
-
-		in_pos = target + find_len;
-	}
-}
-
-static void
-preprocess_decoder(struct decoder *decoder)
-{
-	char *out1 = xcalloc(strlen(decoder->fmt_string) * 2);
-	string_replace(out1, decoder->fmt_string, "$$", "%1$s");
-
-	char *out2 = xcalloc(strlen(decoder->fmt_string) * 2 + 12);
-	string_replace(out2, out1, "$@", "%2$s");
-
-	/*
- 	* This is necessary since positional fmt arguments can't skip indices. This macro
- 	* ensures that all arguments' types are specified without affecting the output.
- 	*/
-	strncat(out2, "%1$.0s" "%2$.0s", strlen(out1) * 2);
-
-	free(decoder->fmt_string);
-	free(out1);
-
-	decoder->fmt_string = out2;
-}
-
 /*
  * Splits the AST into preprocessor definitions, struct definitions, and
  * syscall definitions while maintaining the necessary information about
@@ -121,8 +73,6 @@ preprocess_rec(struct ast_node *root, struct condition_stack *cur,
 			.next = state->decoder_head
 		};
 		state->decoder_head = decoder;
-
-		preprocess_decoder(&decoder->decoder);
 	} else if (root->type == AST_DEFINE || root->type == AST_INCLUDE) {
 		struct statement_condition *conditions = create_statement_condition(cur);
 		struct preprocessor_statement_list *new = xmalloc(sizeof *new);

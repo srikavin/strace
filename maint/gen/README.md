@@ -58,6 +58,28 @@ The `$` character is used to indicate that a syscall is a variant of another one
 The `const` parameters of a variant syscall will be used to determine which
 variant to use. If no variant syscalls match, the base syscall will be used.
 
+### Custom Decoder
+
+Custom decoders have the format
+```
+:type[argname, arg2[$3], $1] %{
+    do_something(tcp, $$, $1);
+%}
+```
+
+The type following the `:` indicates which type this decoder should apply to.
+Template variables (`$` followed by 1 or more numbers) can be used to reference
+the value of a type option. These variables can be used within the body of the
+custom decoder.
+
+The special `$$` variable refers to the root argument.
+
+For example, the syscall `example(arg1 type[test, type2[5], 1]` would have the
+following decoder for the arg1 parameter:
+```
+do_something(tcp, tcp->u_arg[1], 1);
+```
+
 ### Structs
 
 Struct definitions have the format

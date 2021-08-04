@@ -65,19 +65,20 @@ resolve_type(struct ast_type *out, char *name, struct ast_type_option_list *opti
 		char *name;
 		size_t expected_args;
 	} expected_options_len[] = {
-		{"string", 0},
-		{"stringnoz", 1},
 		{"const", 1},
 		{"ptr", 2},
 		{"array", 2},
 		{"ref", 1},
 		{"xor_flags", 2},
 		{"or_flags", 2},
-		{"ignore", 0}
 	};
 
 	size_t options_len = 0;
 	for (struct ast_type_option_list *cur = options; cur != NULL; cur = cur->next) {
+		if (cur->option->child_type == AST_TYPE_CHILD_TEMPLATE_ID) {
+			return NULL;
+		}
+
 		options_len++;
 	}
 
@@ -92,10 +93,7 @@ resolve_type(struct ast_type *out, char *name, struct ast_type_option_list *opti
 		}
 	}
 
-	if (strcmp(name, "stringnoz") == 0) {
-		out->type = TYPE_STRINGNOZ;
-		out->stringnoz.len = options->option;
-	} else if (strcmp(name, "const") == 0) {
+	if (strcmp(name, "const") == 0) {
 		out->type = TYPE_CONST;
 		out->constt.value = options->option;
 		out->constt.real_type = NULL;
@@ -117,7 +115,7 @@ resolve_type(struct ast_type *out, char *name, struct ast_type_option_list *opti
 	} else if (strcmp(name, "array") == 0) {
 		out->type = TYPE_ARRAY;
 		out->array.type = options->option;
-//		out->array.len = options->next->option;
+		out->array.len = options->next->option;
 	} else if (strcmp(name, "ref") == 0) {
 		out->type = TYPE_REF;
 		if (options->option->child_type != AST_TYPE_CHILD_TYPE) {
@@ -143,8 +141,6 @@ resolve_type(struct ast_type *out, char *name, struct ast_type_option_list *opti
 			return "first type option for ptr must be a string";
 		}
 		out->orflags.dflt = options->next->option->type->name;
-	} else if (strcmp(name, "ignore") == 0) {
-		out->type = TYPE_IGNORE;
 	}
 
 	return NULL;

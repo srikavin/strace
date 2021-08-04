@@ -80,6 +80,12 @@ int last_line_location;
 	return T_NUMBER;
 }
 
+\$[0-9]+ {
+	yylval.number.val = strtol(yytext + 1, NULL, 10);
+	yylval.number.raw = NULL;
+	return T_TEMPLATE_IDENTIFIER;
+}
+
 [A-Za-z_@\?][A-Za-z0-9_\?\$]* {
 	if (yytext[0] == '@' && strcmp(yytext, "@ret") != 0) {
 		yyerror("@ can only be used in @ret");
