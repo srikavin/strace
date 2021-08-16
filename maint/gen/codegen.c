@@ -414,6 +414,7 @@ generate_templated_printer(FILE *out, struct syscall *syscall,
 																			 actual_option->option);
 				substitutions[subs_pos].template_id = template_option->option->template.id;
 				subs_pos++;
+				continue;
 			}
 
 			if (actual_option->option->child_type != template_option->option->child_type) {
@@ -437,13 +438,14 @@ generate_templated_printer(FILE *out, struct syscall *syscall,
 	intmax_t cur = 0;
 	bool in_template_number = false;
 	for (size_t i = 0; i < template_len; ++i) {
-		if (template[i] == '$' && (i + 1 < template_len && template[i + 1] == '$')) {
+		if (template[i] == '$' && (template[i + 1] == '$')) {
 			OUTF("(%s)", arg);
 			i++;
 			continue;
 		}
 
-		if (template[i] == '$' && (i + 1 < template_len && isdigit(template[i + 1]))) {
+		if (template[i] == '$' && (isdigit(template[i + 1]))) {
+			cur = 0;
 			in_template_number = true;
 			continue;
 		}
@@ -453,11 +455,11 @@ generate_templated_printer(FILE *out, struct syscall *syscall,
 			continue;
 		}
 
-		if (in_template_number && isdigit(template[i])) {
+		if (isdigit(template[i])) {
 			cur = cur * 10 + (template[i] - '0');
 		}
 
-		if (in_template_number && (!isdigit(template[i]) || i == in_template_number - 1)) {
+		if (!isdigit(template[i]) || i == template_len - 1) {
 			in_template_number = false;
 
 			int found = -1;
@@ -476,6 +478,10 @@ generate_templated_printer(FILE *out, struct syscall *syscall,
 			}
 
 			OUTF("(%s)", substitutions[found].value);
+
+			if (i != template_len - 1) {
+				OUTC(template[i]);
+			}
 		}
 	}
 }
