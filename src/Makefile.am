@@ -54,6 +54,8 @@ noinst_LIBRARIES = libstrace.a
 libstrace_a_CPPFLAGS = $(strace_CPPFLAGS)
 libstrace_a_CFLAGS = $(strace_CFLAGS)
 libstrace_a_SOURCES =	\
+    gen/gen_hdio.c \
+    gen/generated.h \
 	access.c	\
 	affinity.c	\
 	aio.c		\

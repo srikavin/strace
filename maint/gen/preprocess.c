@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <ctype.h>
 #include <memory.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -36,6 +37,24 @@ create_statement_condition(struct condition_stack *stack)
 	return ret;
 }
 
+static char *
+strip_whitespace(char *str)
+{
+	if (*str == '\0') {
+		return str;
+	}
+
+	char *end = str + strlen(str) - 1;
+
+	while (end > str && isspace(*end)) {
+		end--;
+	}
+
+	end[1] = '\0';
+
+	return str;
+}
+
 
 struct processing_state {
 	struct preprocessor_statement_list *preprocessor_head;
@@ -68,7 +87,7 @@ preprocess_rec(struct ast_node *root, struct condition_stack *cur,
 			.decoder = {
 				.loc = root->loc,
 				.matching_type = root->decoder.type,
-				.fmt_string = root->decoder.decoder
+				.fmt_string = strip_whitespace(root->decoder.decoder)
 			},
 			.next = state->decoder_head
 		};

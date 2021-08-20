@@ -1,0 +1,5 @@
+#enum
+#include <linux/hdreg.h>
+BUSSTATE_OFF        0
+BUSSTATE_ON         1
+BUSSTATE_TRISTATE   2

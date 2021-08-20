@@ -100,10 +100,12 @@ struct ast_type {
 		struct {
 			struct ast_type_option *flag_type;
 			char *dflt;
+			struct ast_type *underlying;
 		} xorflags;
 		struct {
 			struct ast_type_option *flag_type;
 			char *dflt;
+			struct ast_type *underlying;
 		} orflags;
 	};
 };
