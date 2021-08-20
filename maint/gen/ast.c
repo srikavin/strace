@@ -142,9 +142,12 @@ compare_type_option_list(struct ast_type_option_list *a, struct ast_type_option_
 			return false;
 		}
 
-		if (cur_a->option->child_type == AST_TYPE_CHILD_TYPE &&
-			(!ast_type_matching(cur_a->option->type, cur_b->option->type))) {
-			return false;
+		if (cur_a->option->child_type == AST_TYPE_CHILD_TYPE) {
+			if (!(strcmp(cur_a->option->type->name, cur_b->option->type->name) == 0 &&
+				  compare_type_option_list(cur_a->option->type->options,
+										   cur_b->option->type->options, match_templates))) {
+				return false;
+			}
 		}
 
 		cur_a = cur_a->next;
@@ -329,6 +332,8 @@ free_ast_tree(struct ast_node *root)
 			}
 			break;
 		}
+		default:
+			break;
 	}
 
 	free(root);

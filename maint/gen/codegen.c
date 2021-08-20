@@ -53,6 +53,7 @@ static struct decoder_list *decoders = NULL;
 #define VARIANT_FUNC_NAME_LEN 64
 #define SYSCALL_RET_FLAG_LEN 64
 #define SYSCALL_ARG_STR_LEN 16
+#define DECODER_PROTOTYPE_LEN 128
 
 #define ARRAY_LEN(x) (sizeof(x) / sizeof((x)[0]))
 
@@ -169,8 +170,17 @@ is_unsigned_integer_typename(const char *name)
  * Stores a string referring to the i-th argument in the current syscall.
  */
 static void
-get_syscall_arg_value(char out[static SYSCALL_ARG_STR_LEN], size_t i)
+get_syscall_arg_value(char out[static SYSCALL_ARG_STR_LEN], struct syscall *syscall, size_t i)
 {
+	if (syscall->is_ioctl) {
+		if (i >= 1 && i <= 2) {
+			const char *ioctl_args[3] = {"", "code", "arg"};
+			snprintf(out, SYSCALL_ARG_STR_LEN, "%s", ioctl_args[i]);
+			return;
+		}
+
+		log_warning("ioctl decoder referenced OOB argument %zu", syscall->loc, i);
+	}
 	snprintf(out, SYSCALL_ARG_STR_LEN, "tcp->u_arg[%zu]", i);
 }
 
@@ -299,7 +309,7 @@ resolve_type_option_to_value(struct syscall *syscall, struct ast_type_option *op
 
 			if (found) {
 				char *ret = xmalloc(SYSCALL_ARG_STR_LEN);
-				get_syscall_arg_value(ret, index);
+				get_syscall_arg_value(ret, syscall, index);
 				return ret;
 			}
 
@@ -523,7 +533,7 @@ generate_printer(FILE *out, struct syscall *syscall,
 	} else if (type->type == TYPE_XORFLAGS) {
 		OUTFI("printxval(%s, %s, \"%s\");\n", type->xorflags.flag_type->type->name, arg,
 			  type->orflags.dflt);
-	} else if (type->type == TYPE_STRINGNOZ || strcmp(type->name, "string") == 0) {
+	} else if (strcmp(type->name, "stringnoz") == 0 || strcmp(type->name, "string") == 0) {
 		log_warning("Type '%s' should be wrapped in a ptr type to indicate direction",
 					syscall->loc, type->name);
 	} else if (type->type == TYPE_CONST) {
@@ -555,7 +565,7 @@ generate_return_flags(FILE *out, struct syscall *syscall, int indent_level)
 		OUTFI("return RVAL_STR;\n");
 	} else {
 		char flags[SYSCALL_RET_FLAG_LEN];
-		get_sys_func_return_flags(flags, &ret, false);
+		get_sys_func_return_flags(flags, &ret, syscall->is_ioctl);
 		OUTFI("return %s;\n", flags);
 	}
 }
@@ -615,6 +625,16 @@ out_statement_condition_end(FILE *out, struct statement_condition *condition)
 	}
 }
 
+static void
+get_decoder_prototype(char out[static DECODER_PROTOTYPE_LEN],
+					  struct syscall *syscall, char *func_name)
+{
+	snprintf(out, DECODER_PROTOTYPE_LEN, "static int\n"
+										 "%s(struct tcb *tcp%s)\n",
+			 func_name,
+			 syscall->is_ioctl ? ", unsigned int code, kernel_ulong_t arg" : "");
+}
+
 /*
  * Prints out a decoder for the given system call.
  */
@@ -625,9 +645,18 @@ generate_decoder(FILE *out, struct syscall *syscall, bool is_variant)
 
 	out_statement_condition_start(out, syscall->conditions);
 
+	int arg_offset = 0;
+	int arg_index = 0;
+
+	if (syscall->is_ioctl) {
+		// no need to decode code, or arg for ioctl variant syscalls
+		arg_offset = 2;
+		arg_index = 2;
+	}
+
 	// determine which strategy to use depending on how many OUT ptrs there are
 	size_t out_ptrs = 0;
-	for (size_t i = 0; i < syscall->arg_count; i++) {
+	for (size_t i = arg_offset; i < syscall->arg_count; i++) {
 		if (IS_OUT_PTR(syscall->args[i].type)) {
 			out_ptrs++;
 		}
@@ -637,23 +666,29 @@ generate_decoder(FILE *out, struct syscall *syscall, bool is_variant)
 	if (is_variant) {
 		char func_name[VARIANT_FUNC_NAME_LEN];
 		get_variant_function_name(func_name, syscall->name, true);
-		OUTFI("static int\n");
-		OUTFI("%s(struct tcb *tcp)\n", func_name);
+
+		char decoder_prototype[DECODER_PROTOTYPE_LEN];
+		get_decoder_prototype(decoder_prototype, syscall, func_name);
+
+		OUTSI(decoder_prototype);
 	} else {
 		OUTFI("SYS_FUNC(%s)\n", syscall->name);
 	}
 	OUTSI("{\n");
 	indent_level++;
 
-	int arg_index = 0;
 	char arg_val[SYSCALL_ARG_STR_LEN];
 
 	if (out_ptrs == 0) {
+		if (syscall->is_ioctl) {
+			OUTFI("tprint_arg_next();\n");
+		}
+
 		// 0 out ptrs: print all args in sysenter
-		for (size_t i = 0; i < syscall->arg_count; i++) {
+		for (size_t i = arg_offset; i < syscall->arg_count; i++) {
 			struct syscall_argument arg = syscall->args[i];
 			OUTFI("/* arg: %s (%s) */\n", arg.name, type_to_ctype(arg.type));
-			get_syscall_arg_value(arg_val, arg_index++);
+			get_syscall_arg_value(arg_val, syscall, arg_index++);
 
 			generate_printer(out, syscall, arg.name, arg_val, true, arg.type,
 							 indent_level);
@@ -665,10 +700,15 @@ generate_decoder(FILE *out, struct syscall *syscall, bool is_variant)
 		}
 	} else if (out_ptrs == 1) {
 		// == 1 out ptrs: print args until the out ptr in sysenter, rest in sysexit
-		size_t cur = 0;
+		size_t cur = arg_offset;
 
 		OUTSI("if (entering(tcp)) {\n");
 		indent_level++;
+
+		if (syscall->is_ioctl) {
+			OUTFI("tprint_arg_next();\n");
+		}
+
 		for (; cur < syscall->arg_count; ++cur) {
 			struct syscall_argument arg = syscall->args[cur];
 			if (IS_OUT_PTR(arg.type)) {
@@ -676,7 +716,7 @@ generate_decoder(FILE *out, struct syscall *syscall, bool is_variant)
 			}
 
 			OUTFI("/* arg: %s (%s) */\n", arg.name, type_to_ctype(arg.type));
-			get_syscall_arg_value(arg_val, arg_index++);
+			get_syscall_arg_value(arg_val, syscall, arg_index++);
 
 			generate_printer(out, syscall, arg.name, arg_val, true, arg.type,
 							 indent_level);
@@ -702,7 +742,7 @@ generate_decoder(FILE *out, struct syscall *syscall, bool is_variant)
 		for (; cur < syscall->arg_count; ++cur) {
 			struct syscall_argument arg = syscall->args[cur];
 			OUTFI("/* arg: %s (%s) */\n", arg.name, type_to_ctype(arg.type));
-			get_syscall_arg_value(arg_val, arg_index++);
+			get_syscall_arg_value(arg_val, syscall, arg_index++);
 
 			generate_printer(out, syscall, arg.name, arg_val, false, arg.type,
 							 indent_level);
@@ -755,11 +795,16 @@ output_variant_syscall_group(FILE *out, struct syscall_group *group, bool is_var
 		// variant system call
 		char func_name[VARIANT_FUNC_NAME_LEN];
 		get_variant_function_name(func_name, group->base->name, false);
-		OUTFI("static int\n%s(struct tcb *tcp) {\n", func_name);
+
+		char decoder_prototype[DECODER_PROTOTYPE_LEN];
+		get_decoder_prototype(decoder_prototype, group->base, func_name);
+
+		OUTSI(decoder_prototype);
 	} else {
 		// base system call
 		OUTFI("SYS_FUNC(%s) {\n", group->base->name);
 	}
+	OUTSI("{\n");
 	indent_level++;
 
 	OUTSI("");
@@ -786,7 +831,7 @@ output_variant_syscall_group(FILE *out, struct syscall_group *group, bool is_var
 			}
 
 			char arg_str[SYSCALL_ARG_STR_LEN];
-			get_syscall_arg_value(arg_str, arg_idx);
+			get_syscall_arg_value(arg_str, cur_child, arg_idx);
 
 			if (arg.type->constt.value->child_type == AST_TYPE_CHILD_RANGE) {
 				OUTF("((%s) <= (%s) && (%s) <= (%s))", arg_str,
@@ -806,7 +851,7 @@ output_variant_syscall_group(FILE *out, struct syscall_group *group, bool is_var
 
 		char func_name[VARIANT_FUNC_NAME_LEN];
 		get_variant_function_name(func_name, cur_child->name, cur_child_grp->child_count == 0);
-		OUTFI("return %s(tcp);\n", func_name);
+		OUTFI("return %s(tcp%s);\n", func_name, cur_child->is_ioctl ? ", code, arg" : "");
 
 		indent_level--;
 		OUTSI("} else ");
@@ -817,7 +862,7 @@ output_variant_syscall_group(FILE *out, struct syscall_group *group, bool is_var
 
 	char func_name[VARIANT_FUNC_NAME_LEN];
 	get_variant_function_name(func_name, group->base->name, true);
-	OUTFI("return %s(tcp);\n", func_name);
+	OUTFI("return %s(tcp%s);\n", func_name, group->base->is_ioctl ? ", code, arg" : "");
 
 	indent_level--;
 	OUTSI("}\n");
@@ -858,9 +903,11 @@ output_syscall_groups(FILE *out, struct syscall_group *groups,
 
 		output_syscall_groups(out, groups[i].children, groups[i].child_count, &groups[i]);
 
-		generate_decoder(out, groups[i].base, true);
+		if (strcmp(groups[i].base->name, "ioctl") != 0) {
+			generate_decoder(out, groups[i].base, true);
 
-		output_variant_syscall_group(out, &groups[i], parent != NULL);
+			output_variant_syscall_group(out, &groups[i], parent != NULL);
+		}
 	}
 }
 

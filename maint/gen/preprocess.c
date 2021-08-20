@@ -108,7 +108,8 @@ preprocess_rec(struct ast_node *root, struct condition_stack *cur,
 			.conditions = create_statement_condition(cur),
 			.ret = *root->syscall.return_type,
 			.arg_count = arg_count,
-			.loc = root->loc
+			.loc = root->loc,
+			.is_ioctl = strncmp(root->syscall.name, "ioctl$", 6) == 0
 		};
 
 		size_t cur_count = 0;
@@ -227,10 +228,10 @@ group_syscall_variants(struct processing_state *state, size_t *out_count)
 		groups++;
 	}
 
-	struct syscall_group *ret = realloc(scratch, sizeof(*scratch) * groups);
+	struct syscall_group *ret = realloc(scratch, sizeof(*scratch) * (groups + 1));
 
 	if (ret == NULL) {
-		fprintf(stderr, "realloc failed");
+		fprintf(stderr, "realloc failed for %zu bytes\n", sizeof(*scratch) * groups);
 		exit(1);
 	}
 

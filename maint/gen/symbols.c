@@ -67,7 +67,6 @@ resolve_type(struct ast_type *out, char *name, struct ast_type_option_list *opti
 	} expected_options_len[] = {
 		{"const", 1},
 		{"ptr", 2},
-		{"array", 2},
 		{"ref", 1},
 		{"xor_flags", 2},
 		{"or_flags", 2},
@@ -112,10 +111,6 @@ resolve_type(struct ast_type *out, char *name, struct ast_type_option_list *opti
 			return "first type option for ptr must be 'in', 'out' or 'inout'";
 		}
 		out->ptr.type = options->next->option->type;
-	} else if (strcmp(name, "array") == 0) {
-		out->type = TYPE_ARRAY;
-		out->array.type = options->option;
-		out->array.len = options->next->option;
 	} else if (strcmp(name, "ref") == 0) {
 		out->type = TYPE_REF;
 		if (options->option->child_type != AST_TYPE_CHILD_TYPE) {
