@@ -19,6 +19,8 @@ typedef struct hd_geometry struct_hd_geometry;
 
 #include "xlat/hdio_drive_cmds.h"
 
+#include "gen/generated.h"
+
 static int
 print_hdio_getgeo(struct tcb *const tcp, const kernel_ulong_t arg)
 {
@@ -113,7 +115,7 @@ MPERS_PRINTER_DECL(int, hdio_ioctl, struct tcb *const tcp,
 	case HDIO_DRIVE_CMD:
 		return print_hdio_drive_cmd(tcp, arg);
 	default:
-		return RVAL_DECODED;
+		return var_ioctl_HDIO(tcp, code, arg);
 	}
 
 	return RVAL_IOCTL_DECODED;

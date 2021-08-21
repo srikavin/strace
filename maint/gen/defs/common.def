@@ -36,7 +36,7 @@
 :ptr[in, array[uint32_t, $1]] %{
 	{
 		uint32_t int_buffer;
-		print_array(tcp, $$, $1, &int_buffer, sizeof(int_buffer), tfetch_mem, print_uint32_array_member, 0);
+		print_array(tcp, $$, $1, &int_buffer, sizeof(int_buffer), tfetch_mem, print_xint32_array_member, 0);
 	}
 %}
 

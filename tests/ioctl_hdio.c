@@ -14,6 +14,10 @@
 #include <stdlib.h>
 #include <linux/hdreg.h>
 #include <sys/ioctl.h>
+#include "xlat.h"
+
+#include "xlat/hdio_busstates.h"
+#include "xlat/hdio_ide_nice.h"
 
 static const char *errstr;
 
@@ -59,7 +63,7 @@ main(int argc, char *argv[])
 	for (size_t i = 0; i < num_skip; i++) {
 		long ret = ioctl(-1, HDIO_GET_UNMASKINTR, 0);
 
-		printf("ioctl(-1, %s, 0) = %s%s\n",
+		printf("ioctl(-1, %s, NULL) = %s%s\n",
 		       XLAT_STR(HDIO_GET_UNMASKINTR), sprintrc(ret),
 		       ret == INJECT_RETVAL ? " (INJECTED)" : "");
 
@@ -72,7 +76,7 @@ main(int argc, char *argv[])
 
 	if (!locked)
 		error_msg_and_fail("Hasn't locked on ioctl(-1"
-				   ", HDIO_GET_UNMASKINTR, 0) returning %d",
+				   ", HDIO_GET_UNMASKINTR, NULL) returning %d",
 				   INJECT_RETVAL);
 #endif
 
@@ -83,40 +87,12 @@ main(int argc, char *argv[])
 		uint32_t cmd;
 		const char *str;
 	} unsupp_cmds[] = {
-		{ ARG_STR(HDIO_GET_UNMASKINTR) },
-		{ ARG_STR(HDIO_GET_MULTCOUNT) },
 		{ ARG_STR(HDIO_GET_QDMA) },
 		{ ARG_STR(HDIO_SET_XFER) },
-		{ ARG_STR(HDIO_OBSOLETE_IDENTITY) },
-		{ ARG_STR(HDIO_GET_KEEPSETTINGS) },
-		{ ARG_STR(HDIO_GET_32BIT) },
-		{ ARG_STR(HDIO_GET_NOWERR) },
-		{ ARG_STR(HDIO_GET_DMA) },
-		{ ARG_STR(HDIO_GET_NICE) },
-		{ ARG_STR(HDIO_GET_IDENTITY) },
-		{ ARG_STR(HDIO_GET_WCACHE) },
-		{ ARG_STR(HDIO_GET_ACOUSTIC) },
-		{ ARG_STR(HDIO_GET_ADDRESS) },
-		{ ARG_STR(HDIO_GET_BUSSTATE) },
 		{ ARG_STR(HDIO_TRISTATE_HWIF) },
-		{ ARG_STR(HDIO_DRIVE_RESET) },
 		{ ARG_STR(HDIO_DRIVE_TASKFILE) },
 		{ ARG_STR(HDIO_DRIVE_TASK) },
-		{ ARG_STR(HDIO_SET_MULTCOUNT) },
-		{ ARG_STR(HDIO_SET_UNMASKINTR) },
-		{ ARG_STR(HDIO_SET_KEEPSETTINGS) },
-		{ ARG_STR(HDIO_SET_32BIT) },
-		{ ARG_STR(HDIO_SET_NOWERR) },
-		{ ARG_STR(HDIO_SET_DMA) },
-		{ ARG_STR(HDIO_SET_PIO_MODE) },
-		{ ARG_STR(HDIO_SCAN_HWIF) },
-		{ ARG_STR(HDIO_UNREGISTER_HWIF) },
-		{ ARG_STR(HDIO_SET_NICE) },
-		{ ARG_STR(HDIO_SET_WCACHE) },
-		{ ARG_STR(HDIO_SET_ACOUSTIC) },
-		{ ARG_STR(HDIO_SET_BUSSTATE) },
 		{ ARG_STR(HDIO_SET_QDMA) },
-		{ ARG_STR(HDIO_SET_ADDRESS) },
 	};
 
 	for (size_t i = 0; i < ARRAY_SIZE(unsupp_cmds); i++) {
@@ -219,6 +195,185 @@ main(int argc, char *argv[])
 		printf("...");
 	}
 	printf("}) = %s\n", errstr);
+
+	/* HDIO_DRIVE_RESET */
+	printf("ioctl(-1, %s, NULL) = %s\n", XLAT_STR(HDIO_DRIVE_RESET), errstr);
+	do_ioctl_ptr(HDIO_DRIVE_RESET, 0);
+
+	printf("ioctl(-1, %s, %p) = %s\n", XLAT_STR(HDIO_DRIVE_RESET),
+		   (void *) 0xdeadbeef, errstr);
+	do_ioctl(HDIO_DRIVE_RESET, 0xdeadbeef);
+
+	printf("ioctl(-1, %s, [%#x, %#x, %#x]) = %s\n", XLAT_STR(HDIO_DRIVE_RESET),
+		   (unsigned) 0xdeadbeef, (unsigned) 0xAAAAAAAA, (unsigned) 0xbeefbeef, errstr);
+	int drive_reset_args[3] = {0xdeadbeef, 0xAAAAAAAA, 0xbeefbeef};
+	do_ioctl_ptr(HDIO_DRIVE_RESET, &drive_reset_args);
+
+	/* HDIO_SCAN_HWIF */
+	printf("ioctl(-1, %s, NULL) = %s\n", XLAT_STR(HDIO_SCAN_HWIF), errstr);
+	do_ioctl_ptr(HDIO_SCAN_HWIF, 0);
+
+	printf("ioctl(-1, %s, %p) = %s\n", XLAT_STR(HDIO_SCAN_HWIF),
+		   (void *) 0xdeadbeef, errstr);
+	do_ioctl(HDIO_SCAN_HWIF, 0xdeadbeef);
+
+	printf("ioctl(-1, %s, [%#x, %#x, %#x]) = %s\n", XLAT_STR(HDIO_SCAN_HWIF),
+		   (unsigned) 0xdeadbeef, (unsigned) 0xAAAAAAAA, (unsigned) 0xbeefbeef, errstr);
+	int scan_hwif_args[3] = {0xdeadbeef, 0xAAAAAAAA, 0xbeefbeef};
+	do_ioctl_ptr(HDIO_SCAN_HWIF, &scan_hwif_args);
+
+	/* Getters of the form ioctl(..., ..., &val) */
+	static const struct {
+		uint32_t cmd;
+		const char *str;
+	} getter_cmds[] = {
+		{ ARG_STR(HDIO_GET_32BIT) },
+		{ ARG_STR(HDIO_GET_ACOUSTIC) },
+		{ ARG_STR(HDIO_GET_ADDRESS) },
+		{ ARG_STR(HDIO_GET_DMA) },
+		{ ARG_STR(HDIO_GET_KEEPSETTINGS) },
+		{ ARG_STR(HDIO_GET_MULTCOUNT) },
+		{ ARG_STR(HDIO_GET_NOWERR) },
+		{ ARG_STR(HDIO_GET_UNMASKINTR) },
+		{ ARG_STR(HDIO_GET_WCACHE) },
+	};
+
+	for (size_t i = 0; i < ARRAY_SIZE(getter_cmds); i++) {
+		unsigned long val = 0xdeadbeef;
+
+		rc = do_ioctl_ptr(getter_cmds[i].cmd, &val);
+		printf("ioctl(-1, " XLAT_FMT ", ", XLAT_SEL(getter_cmds[i].cmd, getter_cmds[i].str));
+		if (rc >= 0) {
+			printf("[%lu]", val);
+		} else {
+			printf("%p", &val);
+		}
+		printf(") = %s\n", errstr);
+	}
+
+	/* Setters of the form ioctl(..., ..., val) */
+	static const struct {
+		uint32_t cmd;
+		const char *str;
+	} setter_cmds[] = {
+			{ ARG_STR(HDIO_SET_32BIT) },
+			{ ARG_STR(HDIO_SET_ACOUSTIC) },
+			{ ARG_STR(HDIO_SET_ADDRESS) },
+			{ ARG_STR(HDIO_SET_DMA) },
+			{ ARG_STR(HDIO_SET_KEEPSETTINGS) },
+			{ ARG_STR(HDIO_SET_MULTCOUNT) },
+			{ ARG_STR(HDIO_SET_NOWERR) },
+			{ ARG_STR(HDIO_SET_PIO_MODE) },
+			{ ARG_STR(HDIO_SET_UNMASKINTR) },
+			{ ARG_STR(HDIO_SET_WCACHE) },
+			{ ARG_STR(HDIO_UNREGISTER_HWIF) },
+	};
+
+	for (size_t i = 0; i < ARRAY_SIZE(setter_cmds); i++) {
+		unsigned long val = 0xdeadbeef;
+
+		rc = do_ioctl(setter_cmds[i].cmd, val);
+		printf("ioctl(-1, " XLAT_FMT ", %lu) = %s\n", XLAT_SEL(setter_cmds[i].cmd, setter_cmds[i].str),
+			   val, errstr);
+	}
+
+	/* HDIO_OBSOLETE_IDENTITY */
+	do_ioctl_ptr(HDIO_OBSOLETE_IDENTITY, NULL);
+	printf("ioctl(-1, %s, NULL) = %s\n", XLAT_STR(HDIO_OBSOLETE_IDENTITY), errstr);
+
+	char obsolete_identity[142];
+	rc = do_ioctl_ptr(HDIO_OBSOLETE_IDENTITY, obsolete_identity);
+
+	printf("ioctl(-1, %s, ", XLAT_STR(HDIO_OBSOLETE_IDENTITY));
+
+	if (rc >= 0) {
+		print_quoted_memory(obsolete_identity, DEFAULT_STRLEN);
+		printf("...");
+	} else {
+		printf("%p", obsolete_identity);
+	}
+	printf(") = %s\n", errstr);
+
+	/* HDIO_GET_IDENTITY */
+	do_ioctl_ptr(HDIO_GET_IDENTITY, NULL);
+	printf("ioctl(-1, %s, NULL) = %s\n", XLAT_STR(HDIO_GET_IDENTITY), errstr);
+
+	char identity[512];
+	rc = do_ioctl_ptr(HDIO_GET_IDENTITY, identity);
+
+	printf("ioctl(-1, %s, ", XLAT_STR(HDIO_GET_IDENTITY));
+
+	if (rc >= 0) {
+		print_quoted_memory(identity, DEFAULT_STRLEN);
+		printf("...");
+	} else {
+		printf("%p", identity);
+	}
+	printf(") = %s\n", errstr);
+
+	/* HDIO_GET_NICE */
+	unsigned long nice_val = 0xdeadffff;
+
+	rc = do_ioctl_ptr(HDIO_GET_NICE, &nice_val);
+	printf("ioctl(-1, %s, ", XLAT_STR(HDIO_GET_NICE));
+	if (rc >= 0) {
+		printf("[");
+#if XLAT_RAW
+		printf("%#lx", nice_val);
+#else
+#if XLAT_VERBOSE
+			printf("%#lx /* ", nice_val);
+#endif
+		printflags(hdio_ide_nice, nice_val, "IDE_NICE_???");
+#if XLAT_VERBOSE
+			printf(" */");
+#endif
+#endif
+		printf("]");
+	} else {
+		printf("%p", &nice_val);
+	}
+	printf(") = %s\n", errstr);
+
+	/* HDIO_SET_NICE */
+	nice_val = 0xc0dec0de;
+	do_ioctl(HDIO_SET_NICE, nice_val);
+	printf("ioctl(-1, %s, ", XLAT_STR(HDIO_SET_NICE));
+#if XLAT_RAW
+	printf("%#lx", nice_val);
+#else
+#if XLAT_VERBOSE
+	printf("%#lx /* ", nice_val);
+#endif
+	printflags(hdio_ide_nice, nice_val, "IDE_NICE_???");
+#if XLAT_VERBOSE
+	printf(" */");
+#endif
+#endif
+	printf(") = %s\n", errstr);
+
+	/* HDIO_GET_BUSSTATE */
+	unsigned long busstate_value = 0xdeadffff;
+
+	rc = do_ioctl_ptr(HDIO_GET_BUSSTATE, &busstate_value);
+	printf("ioctl(-1, %s, ", XLAT_STR(HDIO_GET_BUSSTATE));
+	if (rc >= 0) {
+		printf("[");
+		printxval(hdio_busstates, busstate_value, "BUSSTATE_???");
+		printf("]");
+	} else {
+		printf("%p", &busstate_value);
+	}
+	printf(") = %s\n", errstr);
+
+
+	/* HDIO_SET_BUSSTATE */
+	busstate_value = 0xc0dec0de;
+
+	do_ioctl(HDIO_SET_BUSSTATE, busstate_value);
+	printf("ioctl(-1, %s, ", XLAT_STR(HDIO_SET_BUSSTATE));
+	printxval(hdio_busstates, busstate_value, "BUSSTATE_???");
+	printf(") = %s\n", errstr);
 
 	puts("+++ exited with 0 +++");
 	return 0;
