@@ -46,22 +46,16 @@ struct ast_syscall_arg {
 enum standard_types {
 	// non-special type
 	TYPE_BASIC,
-	// stringnoz[len]
-	TYPE_STRINGNOZ,
 	// const[typ, val]
 	TYPE_CONST,
 	// ptr[dir, typ]
 	TYPE_PTR,
-	// array[typ, len]
-	TYPE_ARRAY,
 	// ref[argname]
 	TYPE_REF,
 	// xorflags[flag_typ]
 	TYPE_XORFLAGS,
 	// orflags[flag_typ]
-	TYPE_ORFLAGS,
-	// ignore
-	TYPE_IGNORE
+	TYPE_ORFLAGS
 };
 
 #define IS_IN_PTR(x) ((x)->type == TYPE_PTR && \

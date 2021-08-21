@@ -73,6 +73,8 @@ struct syscall {
 	// name of the syscall
 	char *name;
 
+	bool is_ioctl;
+
 	// the return value of the syscall
 	struct ast_type ret;
 
