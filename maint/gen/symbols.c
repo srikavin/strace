@@ -68,8 +68,8 @@ resolve_type(struct ast_type *out, char *name, struct ast_type_option_list *opti
 		{"const", 1},
 		{"ptr", 2},
 		{"ref", 1},
-		{"xor_flags", 2},
-		{"or_flags", 2},
+		{"xor_flags", 3},
+		{"or_flags", 3},
 	};
 
 	size_t options_len = 0;
@@ -129,6 +129,10 @@ resolve_type(struct ast_type *out, char *name, struct ast_type_option_list *opti
 			return "first type option for ptr must be a string";
 		}
 		out->xorflags.dflt = options->next->option->type->name;
+		if (options->next->next->option->child_type != AST_TYPE_CHILD_TYPE) {
+			return "third type option for xor_flags must be the underlying flag type";
+		}
+		out->xorflags.underlying = options->next->next->option->type;
 	} else if (strcmp(name, "or_flags") == 0) {
 		out->type = TYPE_ORFLAGS;
 		out->orflags.flag_type = options->option;
@@ -136,6 +140,10 @@ resolve_type(struct ast_type *out, char *name, struct ast_type_option_list *opti
 			return "first type option for ptr must be a string";
 		}
 		out->orflags.dflt = options->next->option->type->name;
+		if (options->next->next->option->child_type != AST_TYPE_CHILD_TYPE) {
+			return "third type option for or_flags must be the underlying flag type";
+		}
+		out->orflags.underlying = options->next->next->option->type;
 	}
 
 	return NULL;

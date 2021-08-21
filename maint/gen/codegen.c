@@ -226,6 +226,14 @@ type_to_ctype(struct ast_type *type)
 		return ret;
 	}
 
+	if (type->type == TYPE_XORFLAGS) {
+		return type_to_ctype(type->xorflags.underlying);
+	}
+
+	if (type->type == TYPE_ORFLAGS) {
+		return type_to_ctype(type->orflags.underlying);
+	}
+
 	return type->name;
 }
 
@@ -367,12 +375,16 @@ generate_printer_ptr(FILE *out, struct syscall *syscall, const char *argname,
 
 	if ((IS_IN_PTR(type) && entering) || (IS_OUT_PTR(type) && !entering)) {
 		OUTFI("%s %s;\n", type_to_ctype(type->ptr.type), var_name);
-		OUTFI("if (!umove_or_printaddr(tcp, %s, &%s)) {\n ",
+		OUTFI("if (!umove_or_printaddr(tcp, %s, &%s)) {\n",
 			  arg, var_name);
+		indent_level++;
 
+		OUTFI("tprint_indirect_begin();\n");
 		generate_printer(out, syscall, argname, var_name, entering,
-						 type->ptr.type, indent_level + 1);
+						 type->ptr.type, indent_level);
+		OUTFI("tprint_indirect_end();\n");
 
+		indent_level--;
 		OUTSI("}\n");
 	}
 }
@@ -509,7 +521,7 @@ generate_printer(FILE *out, struct syscall *syscall,
 			OUTFI("/* using decoder from %s:%d:%d */\n", cur->decoder.loc.file,
 				  cur->decoder.loc.lineno, cur->decoder.loc.colno);
 			generate_templated_printer(out, syscall, arg, type, cur->decoder);
-			OUTSI("\n");
+			OUTC('\n');
 			return;
 		}
 	}
@@ -532,7 +544,7 @@ generate_printer(FILE *out, struct syscall *syscall,
 			  type->orflags.dflt);
 	} else if (type->type == TYPE_XORFLAGS) {
 		OUTFI("printxval(%s, %s, \"%s\");\n", type->xorflags.flag_type->type->name, arg,
-			  type->orflags.dflt);
+			  type->xorflags.dflt);
 	} else if (strcmp(type->name, "stringnoz") == 0 || strcmp(type->name, "string") == 0) {
 		log_warning("Type '%s' should be wrapped in a ptr type to indicate direction",
 					syscall->loc, type->name);
@@ -626,11 +638,12 @@ out_statement_condition_end(FILE *out, struct statement_condition *condition)
 }
 
 static void
-get_decoder_prototype(char out[static DECODER_PROTOTYPE_LEN],
+get_decoder_prototype(char out[static DECODER_PROTOTYPE_LEN], bool internal,
 					  struct syscall *syscall, char *func_name)
 {
-	snprintf(out, DECODER_PROTOTYPE_LEN, "static int\n"
+	snprintf(out, DECODER_PROTOTYPE_LEN, "%sint\n"
 										 "%s(struct tcb *tcp%s)\n",
+			 internal ? "static " : "",
 			 func_name,
 			 syscall->is_ioctl ? ", unsigned int code, kernel_ulong_t arg" : "");
 }
@@ -639,7 +652,7 @@ get_decoder_prototype(char out[static DECODER_PROTOTYPE_LEN],
  * Prints out a decoder for the given system call.
  */
 static void
-generate_decoder(FILE *out, struct syscall *syscall, bool is_variant)
+generate_decoder(FILE *out, struct syscall *syscall, bool is_variant, bool ioctl_fallback)
 {
 	int indent_level = 0;
 
@@ -668,7 +681,7 @@ generate_decoder(FILE *out, struct syscall *syscall, bool is_variant)
 		get_variant_function_name(func_name, syscall->name, true);
 
 		char decoder_prototype[DECODER_PROTOTYPE_LEN];
-		get_decoder_prototype(decoder_prototype, syscall, func_name);
+		get_decoder_prototype(decoder_prototype, true, syscall, func_name);
 
 		OUTSI(decoder_prototype);
 	} else {
@@ -676,6 +689,13 @@ generate_decoder(FILE *out, struct syscall *syscall, bool is_variant)
 	}
 	OUTSI("{\n");
 	indent_level++;
+
+	if (syscall->is_ioctl && ioctl_fallback) {
+		OUTSI("return RVAL_DECODED;\n");
+		indent_level--;
+		OUTSI("}\n");
+		return;
+	}
 
 	char arg_val[SYSCALL_ARG_STR_LEN];
 
@@ -760,7 +780,7 @@ generate_decoder(FILE *out, struct syscall *syscall, bool is_variant)
 	generate_return_flags(out, syscall, indent_level);
 
 	indent_level--;
-	OUTSI("}\n\n");
+	OUTSI("}\n");
 
 	out_statement_condition_end(out, syscall->conditions);
 }
@@ -797,7 +817,7 @@ output_variant_syscall_group(FILE *out, struct syscall_group *group, bool is_var
 		get_variant_function_name(func_name, group->base->name, false);
 
 		char decoder_prototype[DECODER_PROTOTYPE_LEN];
-		get_decoder_prototype(decoder_prototype, group->base, func_name);
+		get_decoder_prototype(decoder_prototype, false, group->base, func_name);
 
 		OUTSI(decoder_prototype);
 	} else {
@@ -868,7 +888,7 @@ output_variant_syscall_group(FILE *out, struct syscall_group *group, bool is_var
 	OUTSI("}\n");
 
 	indent_level--;
-	OUTSI("}\n\n");
+	OUTSI("}\n");
 }
 
 /*
@@ -897,14 +917,14 @@ output_syscall_groups(FILE *out, struct syscall_group *groups,
 		}
 
 		if (groups[i].child_count == 0) {
-			generate_decoder(out, groups[i].base, parent != NULL);
+			generate_decoder(out, groups[i].base, parent != NULL, false);
 			continue;
 		}
 
 		output_syscall_groups(out, groups[i].children, groups[i].child_count, &groups[i]);
 
 		if (strcmp(groups[i].base->name, "ioctl") != 0) {
-			generate_decoder(out, groups[i].base, true);
+			generate_decoder(out, groups[i].base, true, true);
 
 			output_variant_syscall_group(out, &groups[i], parent != NULL);
 		}
@@ -923,7 +943,7 @@ generate_code(const char *in_filename, const char *out_filename, struct processe
 	outf(out, "/* AUTOMATICALLY GENERATED FROM %s - DO NOT EDIT */\n\n", in_filename);
 	outf(out, "%s",
 		 "#include <stddef.h>\n"
-		 "#include \"defs.h\"\n\n"
+		 "#include \"generated.h\"\n\n"
 		 "typedef kernel_ulong_t kernel_size_t;\n\n"
 	);
 
