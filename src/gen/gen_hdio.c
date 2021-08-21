@@ -1,0 +1,337 @@
+/* AUTOMATICALLY GENERATED FROM defs/hdio.def - DO NOT EDIT */
+
+#include <stddef.h>
+#include "generated.h"
+
+typedef kernel_ulong_t kernel_size_t;
+
+#include <linux/hdreg.h>
+#include "xlat/hdio_ide_nice.h"
+#include "xlat/hdio_busstates.h"
+static int
+var_leaf_ioctl_HDIO_DRIVE_RESET(struct tcb *tcp, unsigned int code, kernel_ulong_t arg)
+{
+	tprint_arg_next();
+	/* arg: arg (array *) */
+	/* using decoder from defs/common.syzlang:26:1 */
+
+	{
+		uint32_t int_buffer;
+		print_array(tcp, (arg), (3), &int_buffer, sizeof(int_buffer), tfetch_mem, print_uint32_array_member, 0);
+	}
+
+	return RVAL_IOCTL_DECODED;
+}
+static int
+var_leaf_ioctl_HDIO_GET_32BIT(struct tcb *tcp, unsigned int code, kernel_ulong_t arg)
+{
+	if (entering(tcp)) {
+		tprint_arg_next();
+		return 0;
+	}
+	/* arg: arg (unsigned long *) */
+	/* using decoder from defs/common.syzlang:41:1 */
+
+	if (exiting(tcp)) {
+		printnum_ulong(tcp, (arg));
+	}
+
+	return RVAL_IOCTL_DECODED;
+}
+static int
+var_leaf_ioctl_HDIO_GET_ACOUSTIC(struct tcb *tcp, unsigned int code, kernel_ulong_t arg)
+{
+	if (entering(tcp)) {
+		tprint_arg_next();
+		return 0;
+	}
+	/* arg: arg (unsigned long *) */
+	/* using decoder from defs/common.syzlang:41:1 */
+
+	if (exiting(tcp)) {
+		printnum_ulong(tcp, (arg));
+	}
+
+	return RVAL_IOCTL_DECODED;
+}
+static int
+var_leaf_ioctl_HDIO_GET_ADDRESS(struct tcb *tcp, unsigned int code, kernel_ulong_t arg)
+{
+	if (entering(tcp)) {
+		tprint_arg_next();
+		return 0;
+	}
+	/* arg: arg (unsigned long *) */
+	/* using decoder from defs/common.syzlang:41:1 */
+
+	if (exiting(tcp)) {
+		printnum_ulong(tcp, (arg));
+	}
+
+	return RVAL_IOCTL_DECODED;
+}
+static int
+var_leaf_ioctl_HDIO_GET_BUSSTATE(struct tcb *tcp, unsigned int code, kernel_ulong_t arg)
+{
+	if (entering(tcp)) {
+		tprint_arg_next();
+		return 0;
+	}
+	/* arg: arg (unsigned long *) */
+	unsigned long tmpvar_arg;
+	if (!umove_or_printaddr(tcp, arg, &tmpvar_arg)) {
+		tprint_indirect_begin();
+		printxval(hdio_busstates, tmpvar_arg, "BUSSTATE_???");
+		tprint_indirect_end();
+	}
+
+	return RVAL_IOCTL_DECODED;
+}
+static int
+var_leaf_ioctl_HDIO_GET_DMA(struct tcb *tcp, unsigned int code, kernel_ulong_t arg)
+{
+	if (entering(tcp)) {
+		tprint_arg_next();
+		return 0;
+	}
+	/* arg: arg (unsigned long *) */
+	/* using decoder from defs/common.syzlang:41:1 */
+
+	if (exiting(tcp)) {
+		printnum_ulong(tcp, (arg));
+	}
+
+	return RVAL_IOCTL_DECODED;
+}
+static int
+var_leaf_ioctl_HDIO_GET_IDENTITY(struct tcb *tcp, unsigned int code, kernel_ulong_t arg)
+{
+	if (entering(tcp)) {
+		tprint_arg_next();
+		return 0;
+	}
+	/* arg: identity (stringnoz *) */
+	/* using decoder from defs/common.syzlang:5:1 */
+
+	if (entering(tcp)) {
+		printstrn(tcp, (arg), (512));
+	} else if (syserror(tcp)) {
+		printaddr((arg));
+	} else {
+		printstrn(tcp, (arg), (512));
+	}
+
+	return RVAL_IOCTL_DECODED;
+}
+static int
+var_leaf_ioctl_HDIO_GET_KEEPSETTINGS(struct tcb *tcp, unsigned int code, kernel_ulong_t arg)
+{
+	if (entering(tcp)) {
+		tprint_arg_next();
+		return 0;
+	}
+	/* arg: keep_settings (unsigned long *) */
+	/* using decoder from defs/common.syzlang:41:1 */
+
+	if (exiting(tcp)) {
+		printnum_ulong(tcp, (arg));
+	}
+
+	return RVAL_IOCTL_DECODED;
+}
+static int
+var_leaf_ioctl_HDIO_GET_MULTCOUNT(struct tcb *tcp, unsigned int code, kernel_ulong_t arg)
+{
+	if (entering(tcp)) {
+		tprint_arg_next();
+		return 0;
+	}
+	/* arg: multcount (unsigned long *) */
+	/* using decoder from defs/common.syzlang:41:1 */
+
+	if (exiting(tcp)) {
+		printnum_ulong(tcp, (arg));
+	}
+
+	return RVAL_IOCTL_DECODED;
+}
+static int
+var_leaf_ioctl_HDIO_GET_NICE(struct tcb *tcp, unsigned int code, kernel_ulong_t arg)
+{
+	if (entering(tcp)) {
+		tprint_arg_next();
+		return 0;
+	}
+	/* arg: arg (unsigned long *) */
+	unsigned long tmpvar_arg;
+	if (!umove_or_printaddr(tcp, arg, &tmpvar_arg)) {
+		tprint_indirect_begin();
+		printflags(hdio_ide_nice, tmpvar_arg, "IDE_NICE_???");
+		tprint_indirect_end();
+	}
+
+	return RVAL_IOCTL_DECODED;
+}
+static int
+var_leaf_ioctl_HDIO_GET_NOWERR(struct tcb *tcp, unsigned int code, kernel_ulong_t arg)
+{
+	if (entering(tcp)) {
+		tprint_arg_next();
+		return 0;
+	}
+	/* arg: arg (unsigned long *) */
+	/* using decoder from defs/common.syzlang:41:1 */
+
+	if (exiting(tcp)) {
+		printnum_ulong(tcp, (arg));
+	}
+
+	return RVAL_IOCTL_DECODED;
+}
+static int
+var_leaf_ioctl_HDIO_GET_UNMASKINTR(struct tcb *tcp, unsigned int code, kernel_ulong_t arg)
+{
+	if (entering(tcp)) {
+		tprint_arg_next();
+		return 0;
+	}
+	/* arg: unmaskintr (unsigned long *) */
+	/* using decoder from defs/common.syzlang:41:1 */
+
+	if (exiting(tcp)) {
+		printnum_ulong(tcp, (arg));
+	}
+
+	return RVAL_IOCTL_DECODED;
+}
+static int
+var_leaf_ioctl_HDIO_GET_WCACHE(struct tcb *tcp, unsigned int code, kernel_ulong_t arg)
+{
+	if (entering(tcp)) {
+		tprint_arg_next();
+		return 0;
+	}
+	/* arg: arg (unsigned long *) */
+	/* using decoder from defs/common.syzlang:41:1 */
+
+	if (exiting(tcp)) {
+		printnum_ulong(tcp, (arg));
+	}
+
+	return RVAL_IOCTL_DECODED;
+}
+static int
+var_leaf_ioctl_HDIO_OBSOLETE_IDENTITY(struct tcb *tcp, unsigned int code, kernel_ulong_t arg)
+{
+	if (entering(tcp)) {
+		tprint_arg_next();
+		return 0;
+	}
+	/* arg: identity (stringnoz *) */
+	/* using decoder from defs/common.syzlang:5:1 */
+
+	if (entering(tcp)) {
+		printstrn(tcp, (arg), (142));
+	} else if (syserror(tcp)) {
+		printaddr((arg));
+	} else {
+		printstrn(tcp, (arg), (142));
+	}
+
+	return RVAL_IOCTL_DECODED;
+}
+static int
+var_leaf_ioctl_HDIO_SET_BUSSTATE(struct tcb *tcp, unsigned int code, kernel_ulong_t arg)
+{
+	tprint_arg_next();
+	/* arg: arg (kernel_ulong_t) */
+	printxval(hdio_busstates, arg, "BUSSTATE_???");
+
+	return RVAL_IOCTL_DECODED;
+}
+static int
+var_leaf_ioctl_HDIO_SET_KEEPSETTINGS(struct tcb *tcp, unsigned int code, kernel_ulong_t arg)
+{
+	tprint_arg_next();
+	/* arg: keep_settings (kernel_ulong_t) */
+	PRINT_VAL_U((kernel_ulong_t) arg);
+
+	return RVAL_IOCTL_DECODED;
+}
+static int
+var_leaf_ioctl_HDIO_SET_MULTCOUNT(struct tcb *tcp, unsigned int code, kernel_ulong_t arg)
+{
+	tprint_arg_next();
+	/* arg: multcount (kernel_ulong_t) */
+	PRINT_VAL_U((kernel_ulong_t) arg);
+
+	return RVAL_IOCTL_DECODED;
+}
+static int
+var_leaf_ioctl_HDIO_SET_NICE(struct tcb *tcp, unsigned int code, kernel_ulong_t arg)
+{
+	tprint_arg_next();
+	/* arg: arg (kernel_ulong_t) */
+	printflags(hdio_ide_nice, arg, "IDE_NICE_???");
+
+	return RVAL_IOCTL_DECODED;
+}
+static int
+var_leaf_ioctl_HDIO_SET_UNMASKINTR(struct tcb *tcp, unsigned int code, kernel_ulong_t arg)
+{
+	tprint_arg_next();
+	/* arg: unmaskintr (kernel_ulong_t) */
+	PRINT_VAL_U((kernel_ulong_t) arg);
+
+	return RVAL_IOCTL_DECODED;
+}
+static int
+var_leaf_ioctl_HDIO(struct tcb *tcp, unsigned int code, kernel_ulong_t arg)
+{
+	return RVAL_DECODED;
+}
+int
+var_ioctl_HDIO(struct tcb *tcp, unsigned int code, kernel_ulong_t arg)
+{
+	if ((code) == (HDIO_DRIVE_RESET)) {
+		return var_leaf_ioctl_HDIO_DRIVE_RESET(tcp, code, arg);
+	} else if ((code) == (HDIO_GET_32BIT)) {
+		return var_leaf_ioctl_HDIO_GET_32BIT(tcp, code, arg);
+	} else if ((code) == (HDIO_GET_ACOUSTIC)) {
+		return var_leaf_ioctl_HDIO_GET_ACOUSTIC(tcp, code, arg);
+	} else if ((code) == (HDIO_GET_ADDRESS)) {
+		return var_leaf_ioctl_HDIO_GET_ADDRESS(tcp, code, arg);
+	} else if ((code) == (HDIO_GET_BUSSTATE)) {
+		return var_leaf_ioctl_HDIO_GET_BUSSTATE(tcp, code, arg);
+	} else if ((code) == (HDIO_GET_DMA)) {
+		return var_leaf_ioctl_HDIO_GET_DMA(tcp, code, arg);
+	} else if ((code) == (HDIO_GET_IDENTITY)) {
+		return var_leaf_ioctl_HDIO_GET_IDENTITY(tcp, code, arg);
+	} else if ((code) == (HDIO_GET_KEEPSETTINGS)) {
+		return var_leaf_ioctl_HDIO_GET_KEEPSETTINGS(tcp, code, arg);
+	} else if ((code) == (HDIO_GET_MULTCOUNT)) {
+		return var_leaf_ioctl_HDIO_GET_MULTCOUNT(tcp, code, arg);
+	} else if ((code) == (HDIO_GET_NICE)) {
+		return var_leaf_ioctl_HDIO_GET_NICE(tcp, code, arg);
+	} else if ((code) == (HDIO_GET_NOWERR)) {
+		return var_leaf_ioctl_HDIO_GET_NOWERR(tcp, code, arg);
+	} else if ((code) == (HDIO_GET_UNMASKINTR)) {
+		return var_leaf_ioctl_HDIO_GET_UNMASKINTR(tcp, code, arg);
+	} else if ((code) == (HDIO_GET_WCACHE)) {
+		return var_leaf_ioctl_HDIO_GET_WCACHE(tcp, code, arg);
+	} else if ((code) == (HDIO_OBSOLETE_IDENTITY)) {
+		return var_leaf_ioctl_HDIO_OBSOLETE_IDENTITY(tcp, code, arg);
+	} else if ((code) == (HDIO_SET_BUSSTATE)) {
+		return var_leaf_ioctl_HDIO_SET_BUSSTATE(tcp, code, arg);
+	} else if ((code) == (HDIO_SET_KEEPSETTINGS)) {
+		return var_leaf_ioctl_HDIO_SET_KEEPSETTINGS(tcp, code, arg);
+	} else if ((code) == (HDIO_SET_MULTCOUNT)) {
+		return var_leaf_ioctl_HDIO_SET_MULTCOUNT(tcp, code, arg);
+	} else if ((code) == (HDIO_SET_NICE)) {
+		return var_leaf_ioctl_HDIO_SET_NICE(tcp, code, arg);
+	} else if ((code) == (HDIO_SET_UNMASKINTR)) {
+		return var_leaf_ioctl_HDIO_SET_UNMASKINTR(tcp, code, arg);
+	} else {
+		return var_leaf_ioctl_HDIO(tcp, code, arg);
+	}
+}
